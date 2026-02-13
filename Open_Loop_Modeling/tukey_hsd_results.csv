@@ -1,0 +1,11 @@
+group1,group2,meandiff,p-adj,lower,upper,reject
+FOPTD + Lead (FOPTDLD),First-order process with time delay (FOPTD),-0.002,1.0,-0.211,0.207,False
+FOPTD + Lead (FOPTDLD),SOPTD + Lead (SOPTDLD),-0.0017,1.0,-0.2107,0.2073,False
+FOPTD + Lead (FOPTDLD),Second-order process with time delay (SOPTD),-0.0153,0.9991,-0.2243,0.1937,False
+FOPTD + Lead (FOPTDLD),Third-order process with time delay (TOPTD),-0.03,0.9883,-0.239,0.179,False
+First-order process with time delay (FOPTD),SOPTD + Lead (SOPTDLD),0.0003,1.0,-0.2087,0.2093,False
+First-order process with time delay (FOPTD),Second-order process with time delay (SOPTD),-0.0133,0.9995,-0.2223,0.1957,False
+First-order process with time delay (FOPTD),Third-order process with time delay (TOPTD),-0.028,0.9909,-0.237,0.181,False
+SOPTD + Lead (SOPTDLD),Second-order process with time delay (SOPTD),-0.0137,0.9994,-0.2227,0.1953,False
+SOPTD + Lead (SOPTDLD),Third-order process with time delay (TOPTD),-0.0283,0.9905,-0.2373,0.1807,False
+Second-order process with time delay (SOPTD),Third-order process with time delay (TOPTD),-0.0147,0.9993,-0.2237,0.1943,False

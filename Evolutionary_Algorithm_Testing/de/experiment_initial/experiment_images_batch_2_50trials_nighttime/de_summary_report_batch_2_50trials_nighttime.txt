@@ -1,0 +1,10 @@
+--- DE EXPERIMENT SUMMARY ---
+Total Rounds: 50
+Population Size: 50
+-----------------------------
+Average Iterations to Converge: 18.9
+Average ITAE Cost:              623199.17
+-----------------------------
+Kp (Proportional Gain): 0.03470 (+/- 0.00008)
+Ki (Integral Gain):     0.000014 (+/- 0.000000)
+-----------------------------

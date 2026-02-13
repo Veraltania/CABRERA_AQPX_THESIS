@@ -1,0 +1,11 @@
+Group 1,Group 2,Mean Diff,Abs Diff,p-value,Significant
+First-order process with time delay (FOPTD),Second-order process with time delay (SOPTD),0.013333333,0.013333333,0.089676576,FALSE
+First-order process with time delay (FOPTD),Third-order process with time delay (TOPTD),0.028,0.028,0.003665496,TRUE
+First-order process with time delay (FOPTD),FOPTD + Lead (FOPTDLD),-0.002,0.002,0.779524603,FALSE
+First-order process with time delay (FOPTD),SOPTD + Lead (SOPTDLD),-0.000333333,0.000333333,0.962693676,FALSE
+Second-order process with time delay (SOPTD),Third-order process with time delay (TOPTD),0.014666667,0.014666667,0.066477605,FALSE
+Second-order process with time delay (SOPTD),FOPTD + Lead (FOPTDLD),-0.015333333,0.015333333,0.057194036,FALSE
+Second-order process with time delay (SOPTD),SOPTD + Lead (SOPTDLD),-0.013666667,0.013666667,0.083231877,FALSE
+Third-order process with time delay (TOPTD),FOPTD + Lead (FOPTDLD),-0.03,0.03,0.002467684,TRUE
+Third-order process with time delay (TOPTD),SOPTD + Lead (SOPTDLD),-0.028333333,0.028333333,0.003428626,TRUE
+FOPTD + Lead (FOPTDLD),SOPTD + Lead (SOPTDLD),0.001666667,0.001666667,0.815399885,FALSE

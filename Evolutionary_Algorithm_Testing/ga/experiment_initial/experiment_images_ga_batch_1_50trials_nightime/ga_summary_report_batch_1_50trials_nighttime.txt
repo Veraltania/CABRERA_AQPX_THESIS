@@ -1,0 +1,10 @@
+--- GA EXPERIMENT SUMMARY ---
+Total Rounds: 50
+Population Size: 50
+-----------------------------
+Average Iterations to Converge: 44.9
+Average ITAE Cost:              1210526.87
+-----------------------------
+Kp (Proportional Gain): 0.03614 (+/- 0.00892)
+Ki (Integral Gain):     0.000014 (+/- 0.000003)
+-----------------------------
