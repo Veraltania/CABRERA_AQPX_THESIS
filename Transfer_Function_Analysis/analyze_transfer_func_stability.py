@@ -19,20 +19,11 @@ def find_all_crossings(sys):
     Finds ALL exact crossings of the imaginary axis for a rational transfer function.
     Returns a list of tuples: (frequency_rad_s, crossing_gain_k)
     """
-    # 1. Extract Numerator and Denominator coefficients
-    # sys.num and sys.den are lists of lists, we need 1D arrays
     num = sys.num[0][0]
     den = sys.den[0][0]
 
-    # 2. Construct the "Imaginary Part = 0" polynomial
-    # The condition Im(G(jw)) = 0 is equivalent to:
-    # N(s) * D(-s) - N(-s) * D(s) = 0  (where s = jw)
-
-    # Helper to generate polynomial for P(-s)
-    # We flip the sign of coefficients for odd powers
     def poly_minus_s(coeffs):
         n = len(coeffs) - 1
-        # Create array of signs: [..., -1, 1, -1, 1] depends on power
         powers = np.arange(n, -1, -1)
         signs = np.where(powers % 2 == 1, -1, 1)
         return coeffs * signs
@@ -40,56 +31,73 @@ def find_all_crossings(sys):
     num_neg = poly_minus_s(num)
     den_neg = poly_minus_s(den)
 
-    # Perform polynomial multiplication (convolution)
     term1 = np.convolve(num, den_neg)
     term2 = np.convolve(num_neg, den)
-
-    # The equation to solve: term1 - term2 = 0
     poly_imag_zero = term1 - term2
 
-    # 3. Find roots of this polynomial (these are values of 's')
-    # Since we set s = jw, the valid roots must be purely imaginary (Real part ~ 0)
     roots_s = np.roots(poly_imag_zero)
-
     crossings = []
 
+    # 1. Check for high-frequency crossings (w > 0)
     for r in roots_s:
-        # Filter 1: Must be purely imaginary root (s = jw implies Re(s)=0)
-        # We allow a tiny tolerance for numerical noise
         if abs(r.real) > 1e-5:
             continue
 
-        # Extract w (frequency) from the imaginary part
         w_val = abs(r.imag)
-
-        # Filter 2: We only care about positive frequencies
         if w_val < 1e-6:
             continue
 
-        # 4. Calculate the Gain K at this frequency
-        # G(jw) is purely real here. K = -1 / G(jw)
         g_val = ct.evalfr(sys, 1j * w_val)
-
-        # Filter 3: Check if it's a valid Root Locus crossing (Phase = 180)
-        # This means Real part must be NEGATIVE.
-        # (If Real part is positive, Phase is 0, which is the start of the locus, not a crossing)
         if g_val.real < 0:
             k_cross = -1 / g_val.real
             crossings.append((w_val, k_cross))
 
-    # Sort by Frequency (or by Gain if you prefer)
-    crossings = sorted(list(set(crossings)))  # set removes duplicates
+    # 2. NEW: Explicitly check for DC crossing (w = 0, s = 0)
+    dc_gain = ct.evalfr(sys, 0).real
+    if dc_gain != 0:
+        k_cross_dc = -1.0 / dc_gain
+        # We append w=0 and the associated crossing gain
+        crossings.append((0.0, k_cross_dc))
+
+    crossings = sorted(list(set(crossings)))
     return crossings
 
 
 def define_guardrail_gain(plant):
+    """
+    Finds the lowest positive gain that causes instability by verifying closed-loop poles.
+    """
     all_crossings = find_all_crossings(plant)
     if not all_crossings:
-        return None  # Or a safe default value
+        return None
 
-    # Find the tuple with the minimum k and return only k
-    return min(all_crossings, key=lambda x: x[1])[1]
+    valid_boundaries = []
 
+    for w, k in all_crossings:
+        # We generally care about positive controller gains for the boundary
+        if k <= 0:
+            continue
+
+        # Create the closed-loop system AT this crossing gain
+        cl_sys = ct.feedback(k * plant, 1)
+        poles = cl_sys.poles()
+
+        # Check if any pole is strictly in the Right-Half Plane (ignoring the crossing pole)
+        # We use 1e-4 as a tolerance for floating point math on the imaginary axis
+        is_valid_boundary = True
+        for p in poles:
+            if p.real > 1e-4:
+                is_valid_boundary = False
+                break
+
+        if is_valid_boundary:
+            valid_boundaries.append((w, k))
+
+    if not valid_boundaries:
+        return None
+
+    # Return the valid crossing with the lowest gain
+    return min(valid_boundaries, key=lambda x: x[1])[1]
 
 def display_root_locus(plant, crossings=None):
     """
@@ -111,6 +119,7 @@ def display_root_locus(plant, crossings=None):
 
         for w, k in crossings:
             w_vals.append(w)
+            print(f"Crossing coordinates: (0, {w:.4f}) and (0, {-w:.4f}) at Gain K = {k:.4f}")
             # Plot the positive imaginary crossing
             plt.plot([0], [w], 'rX', markersize=10, zorder=10)
             # Plot the negative imaginary crossing (conjugate)
@@ -126,8 +135,8 @@ def display_root_locus(plant, crossings=None):
     plt.ylabel("Imaginary Axis ($s^{-1}$)")
 
     # Manually set the limits here
-    plt.xlim([-0.015, 0.015])  # Shows Real axis from -10 to 2
-    plt.ylim([-0.015, 0.015])  # Shows Imaginary axis from -5 to 5
+    plt.xlim([-25, 25])  # Shows Real axis from -10 to 2
+    plt.ylim([-100, 100])  # Shows Imaginary axis from -5 to 5
 
     plt.legend()
     plt.tight_layout()
@@ -137,9 +146,9 @@ def display_root_locus(plant, crossings=None):
 # --- Usage ---
 if __name__ == '__main__':
     # System Parameters
-    num = [71.77]
-    den = [3887.85, 1]
-    delay = 320.00
+    num = [-13.87]
+    den = [30961.51, 1]
+    delay = 0.00
     n_pade = 2
 
     # 1. Define System

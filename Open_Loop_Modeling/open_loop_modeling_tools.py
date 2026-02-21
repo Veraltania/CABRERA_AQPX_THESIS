@@ -86,40 +86,43 @@ def plot_filtered_data(df, column_name, filtered_column_name=None, title=None):
 # ================================
 # DATA EXTRACTION
 # ================================
+def extract_and_process(file_paths, start_time, end_time, column_name, filter_minutes=10):
+    """
+    Handles both a single file path (string) or a list of file paths.
+    """
+    # --- FLEXIBILITY CHECK ---
+    # If the user passed a single string, wrap it in a list so the loop works
+    if isinstance(file_paths, str):
+        file_paths = [file_paths]
 
-def extract_and_process(file_path, start_time, end_time, column_name, filter_minutes=10):
-    # Load Data
-    df = pd.read_csv(file_path)
+    # 1. Load and stitch all files
+    df_list = []
+    for path in file_paths:
+        temp_df = pd.read_csv(path)
+        temp_df['DateTime'] = pd.to_datetime(temp_df['Date'] + ' ' + temp_df['Time'])
+        df_list.append(temp_df)
 
-    # Create DateTime column
-    df['DateTime'] = pd.to_datetime(df['Date'] + ' ' + df['Time'])
+    df_full = pd.concat(df_list, ignore_index=True)
 
-    # Filter by Time Range
-    mask = (df['DateTime'] >= start_time) & (df['DateTime'] <= end_time)
-    df_subset = df.loc[mask].copy()
+    # 2. Sort and Clean
+    df_full = df_full.sort_values('DateTime').drop_duplicates(subset=['DateTime']).reset_index(drop=True)
+
+    # 3. Filter by Time Range
+    mask = (df_full['DateTime'] >= start_time) & (df_full['DateTime'] <= end_time)
+    df_subset = df_full.loc[mask].copy()
 
     if df_subset.empty:
         print(f"No data found for range {start_time} to {end_time}")
-        return
+        return None
 
-    # Estimate Sampling Frequency (fs)
-    # Calculate median time difference in seconds
+    # 4. Estimate Sampling Frequency (fs)
     median_diff = df_subset['DateTime'].diff().dt.total_seconds().median()
-    if pd.isna(median_diff) or median_diff == 0:
-        fs = 0.2  # Default fallback (5 seconds)
-    else:
-        fs = 1.0 / median_diff
+    fs = 1.0 / median_diff if (not pd.isna(median_diff) and median_diff > 0) else 0.2
 
-    print(f"Processing range: {start_time} - {end_time}")
-    print(f"Estimated Sampling Frequency: {fs:.4f} Hz")
-
-    # Design and Apply Filter
+    # 5. Filter & Plot
     sos = design_butterworth_filter(fs, period_minutes=filter_minutes)
     df_subset = apply_butterworth_filter(df_subset, column_name, sos)
-
-    # Plot
-    plot_filtered_data(df_subset, column_name,
-                       title=f"{column_name}: {start_time} to {end_time}")
+    plot_filtered_data(df_subset, column_name, title=f"{column_name}: {start_time} to {end_time}")
 
     return df_subset
 

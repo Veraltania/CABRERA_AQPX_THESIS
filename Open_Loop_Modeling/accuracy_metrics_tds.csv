@@ -1,0 +1,6 @@
+Process Model,Feb 9-10,Feb 10-11,Feb 11-12
+First-order process with time delay (FOPTD),0.891,0.972,0.957
+Second-order process with time delay (SOPTD),0.891,0.971,0.938
+Third-order process with time delay (TOPTD),0.858,0.943,0.919
+FOPTD + Lead (FOPTDLD),0.897,0.972,0.957
+SOPTD + Lead (SOPTDLD),0.891,0.972,0.957

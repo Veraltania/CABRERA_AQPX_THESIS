@@ -120,9 +120,9 @@ def generate_standardized_plot(df):
 # --- 4. EXECUTION ---
 if __name__ == "__main__":
     # --- CONFIGURATION ---
-    START_PATIENCE = 10
+    START_PATIENCE = 5
     END_PATIENCE = 50
-    STEP_SIZE = 10
+    STEP_SIZE = 5
 
     # CHANGED: Define the folder name here as a variable
     BASE_OUTPUT_DIR = "results_patience_sweep"
