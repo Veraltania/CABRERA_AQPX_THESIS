@@ -61,7 +61,7 @@ class EvolutionaryOptimizer(ABC):
 
     def calculate_itae_cost(self, Kp, Ki):
         if Kp < 0 or Ki < 0:
-            return 1e9
+            return np.log10(1e9)
         try:
             controller = ct.TransferFunction([Kp, Ki], [1, 0])
             closed_loop = ct.feedback(self.plant * controller, 1)
@@ -75,10 +75,9 @@ class EvolutionaryOptimizer(ABC):
 
             if np.max(y) > 1.2 or np.min(y) < -0.2:
                 itae += 1e9
-
-            return float(itae) if not (np.isnan(itae) or np.isinf(itae)) else 1e9
+            return np.log10(max(itae, 1e-12))
         except:
-            return 1e9
+            return np.log10(1e9)
 
     def save_plots(self, round_num, history, best_Kp, best_Ki):
         # Convergence Plot

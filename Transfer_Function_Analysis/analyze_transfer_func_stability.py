@@ -135,8 +135,8 @@ def display_root_locus(plant, crossings=None):
     plt.ylabel("Imaginary Axis ($s^{-1}$)")
 
     # Manually set the limits here
-    plt.xlim([-25, 25])  # Shows Real axis from -10 to 2
-    plt.ylim([-100, 100])  # Shows Imaginary axis from -5 to 5
+    plt.xlim([-0.1, 0.1])  # Shows Real axis from -10 to 2
+    plt.ylim([-0.1, 0.1])  # Shows Imaginary axis from -5 to 5
 
     plt.legend()
     plt.tight_layout()
@@ -146,10 +146,10 @@ def display_root_locus(plant, crossings=None):
 # --- Usage ---
 if __name__ == '__main__':
     # System Parameters
-    num = [-13.87]
-    den = [30961.51, 1]
-    delay = 0.00
-    n_pade = 2
+    num = [51.39]
+    den = [1550.18, 1]
+    delay = 71.78
+    n_pade = 3
 
     # 1. Define System
     G = define_transfer_func(num, den, delay, n_pade)

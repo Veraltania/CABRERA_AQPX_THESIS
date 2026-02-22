@@ -1,7 +1,17 @@
 from scipy.optimize import differential_evolution
 from Evolutionary_Algorithm_Testing.ea_optimizer import EvolutionaryOptimizer
 
+
 class DEOptimizer(EvolutionaryOptimizer):
+    def __init__(self, config, tf_params):
+        # 1. Initialize base class settings
+        super().__init__(config, tf_params)
+
+        # 2. Extract DE-specific options with robust defaults
+        self.mutation = config.get('mutation', (0.5, 1.0))
+        self.recombination = config.get('recombination', 0.7)
+        self.strategy = config.get('strategy', 'best1bin')
+
     def optimize_round(self, round_num):
         class Tracker:
             def __init__(self, patience, tol):
@@ -37,14 +47,15 @@ class DEOptimizer(EvolutionaryOptimizer):
         tracker = Tracker(self.patience, self.tol)
         bounds = [(0.001, self.max_kp), (0.0, 0.001)]
 
+        # 3. Apply the dynamically loaded DE configurations
         result = differential_evolution(
             cost_wrapper,
             bounds,
             maxiter=self.max_iters,
             popsize=self.pop_size,
-            mutation=(0.5, 1),
-            recombination=0.7,
-            strategy='best1bin',
+            mutation=self.mutation,
+            recombination=self.recombination,
+            strategy=self.strategy,
             callback=tracker.callback,
             disp=False
         )

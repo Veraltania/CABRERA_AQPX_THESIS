@@ -6,6 +6,18 @@ class EarlyStopping(Exception):
     pass
 
 class PSOOptimizer(EvolutionaryOptimizer):
+    def __init__(self, config, tf_params):
+        # 1. Initialize base class settings
+        super().__init__(config, tf_params)
+
+        # 2. Extract PSO-specific options with robust defaults
+        self.c1 = config.get('c1', 0.7)  # Cognitive parameter
+        self.c2 = config.get('c2', 0.5)  # Social parameter
+        self.w = config.get('w', 0.9)  # Inertia weight
+
+        # Package them for PySwarms
+        self.options = {'c1': self.c1, 'c2': self.c2, 'w': self.w}
+
     def optimize_round(self, round_num):
         run_state = {
             'best_cost': float('inf'),
@@ -46,12 +58,12 @@ class PSOOptimizer(EvolutionaryOptimizer):
             return costs_array
 
         bounds = (np.array([0.001, 0.0]), np.array([self.max_kp, 0.001]))
-        options = {'c1': 0.7, 'c2': 0.5, 'w': 0.9}
 
+        # 3. Use the dynamically loaded options here
         optimizer = ps.single.GlobalBestPSO(
             n_particles=self.pop_size,
             dimensions=2,
-            options=options,
+            options=self.options,
             bounds=bounds
         )
 

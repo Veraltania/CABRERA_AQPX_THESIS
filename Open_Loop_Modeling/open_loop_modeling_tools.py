@@ -28,7 +28,6 @@ def design_butterworth_filter(fs, period_minutes=None, order=4):
     print(f"Filter designed: Preserves variations SLOWER than {period_minutes} minutes.")
     return sos
 
-
 def apply_butterworth_filter(df, column_name, sos, output_column_name=None):
     """
     Applies the filter to a dataframe column, handling NaNs.
@@ -45,7 +44,47 @@ def apply_butterworth_filter(df, column_name, sos, output_column_name=None):
     df[output_column_name] = sosfiltfilt(sos, data)
     return df
 
+def apply_moving_average(df, column_name, window_seconds=30, output_column_name=None):
+    """
+    Applies a centered moving average to a dataframe column.
 
+    Parameters:
+        df               : DataFrame with a 'DateTime' column
+        column_name      : Column to smooth
+        window_seconds   : Window size in seconds (default: 30)
+        output_column_name: Output column name (default: {column_name}_filtered)
+
+    Returns:
+        df with new smoothed column added
+    """
+    if output_column_name is None:
+        output_column_name = f"{column_name}_filtered"
+
+    # Estimate sampling frequency from data
+    median_diff = df['DateTime'].diff().dt.total_seconds().median()
+    fs = 1.0 / median_diff if (not pd.isna(median_diff) and median_diff > 0) else 2.0
+
+    # Convert window from seconds to samples (must be odd for centered window)
+    window_samples = int(round(window_seconds * fs))
+    if window_samples % 2 == 0:
+        window_samples += 1  # make odd so window is symmetric
+
+    print(f"Moving average: {window_seconds}s window = {window_samples} samples at fs={fs:.2f} Hz")
+    print(f"Effective lag: {(window_samples - 1) / 2 / fs:.1f} seconds (centered window, so zero lag)")
+
+    data = df[column_name].astype(float).copy()
+
+    # Handle NaNs by linear interpolation before smoothing
+    if data.isna().any():
+        data = data.interpolate(method='linear')
+
+    df[output_column_name] = (
+        data
+        .rolling(window=window_samples, center=True, min_periods=1)
+        .mean()
+    )
+
+    return df
 # ================================
 # PLOTTING FUNCTION
 # ================================
@@ -86,7 +125,7 @@ def plot_filtered_data(df, column_name, filtered_column_name=None, title=None):
 # ================================
 # DATA EXTRACTION
 # ================================
-def extract_and_process(file_paths, start_time, end_time, column_name, filter_minutes=10):
+def extract_and_process(file_paths, start_time, end_time, column_name, window_seconds):
     """
     Handles both a single file path (string) or a list of file paths.
     """
@@ -120,8 +159,9 @@ def extract_and_process(file_paths, start_time, end_time, column_name, filter_mi
     fs = 1.0 / median_diff if (not pd.isna(median_diff) and median_diff > 0) else 0.2
 
     # 5. Filter & Plot
-    sos = design_butterworth_filter(fs, period_minutes=filter_minutes)
-    df_subset = apply_butterworth_filter(df_subset, column_name, sos)
+    # sos = design_butterworth_filter(fs, period_minutes=filter_minutes)
+    # df_subset = apply_butterworth_filter(df_subset, column_name, sos)
+    df_subset = apply_moving_average(df_subset, column_name, window_seconds=window_seconds)
     plot_filtered_data(df_subset, column_name, title=f"{column_name}: {start_time} to {end_time}")
 
     return df_subset
