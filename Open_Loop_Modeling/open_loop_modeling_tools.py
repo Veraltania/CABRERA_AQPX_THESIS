@@ -150,6 +150,7 @@ def simulate_system(t_actual, model_type, params):
         # G(s) = K / ((Tp1*s + 1)(Tp2*s + 1))
         K, Tp1, Tp2 = params[0], params[1], params[2]
         num = [K]
+        # multiply the two poles
         den = np.convolve([Tp1, 1], [Tp2, 1])
 
     elif model_type == 'TOPTD':
@@ -197,7 +198,6 @@ def simulate_system(t_actual, model_type, params):
 def func_foptd(t, K, Tp1, Td, y0):
     return simulate_system(t, 'FOPTD', [K, Tp1, Td, y0])
 
-
 def func_soptd(t, K, Tp1, Tp2, Td, y0):
     return simulate_system(t, 'SOPTD', [K, Tp1, Tp2, Td, y0])
 
@@ -209,7 +209,6 @@ def func_toptd(t, K, Tp1, Tp2, Tp3, Td, y0):
 def func_foptdld(t, K, Tp1, Tz, Td, y0):
     return simulate_system(t, 'FOPTDLD', [K, Tp1, Tz, Td, y0])
 
-
 def func_soptdld(t, K, Tp1, Tp2, Tz, Td, y0):
     return simulate_system(t, 'SOPTDLD', [K, Tp1, Tp2, Tz, Td, y0])
 
@@ -219,7 +218,8 @@ def func_soptdld(t, K, Tp1, Tp2, Tz, Td, y0):
 # ================================
 def fit_any_model(df, model_name, start_time, end_time,
                   raw_col='MCP_WQ_DO', filtered_col='MCP_WQ_DO_filtered'):
-    # --- Data Prep ---
+
+    # select relevant time period (ex. open-loop response period)
     mask = (df['DateTime'] >= start_time) & (df['DateTime'] <= end_time)
     df_slice = df.loc[mask].copy()
 
@@ -227,25 +227,30 @@ def fit_any_model(df, model_name, start_time, end_time,
         print(f"No data for {model_name}")
         return None
 
+    # format timestamp
     t_abs = df_slice['DateTime']
+
+    # convert timestamp to "seconds since start" format
     t_rel = (t_abs - t_abs.iloc[0]).dt.total_seconds().values
     y_filt = df_slice[filtered_col].values
     y_raw = df_slice[raw_col].values
 
-    # --- Initial Guesses ---
-    y_start = np.mean(y_filt[:5])
-    y_end = np.mean(y_filt[-5:])
-    K_g = y_end - y_start
-    T_total = t_rel[-1]
-    Tp_g = T_total / 4
-    Td_g = 10.0
-    Tz_g = 1.0
+    # optimization algorithms need a baseline guess or start before they fine-tune
+    # the curve.
+    y_start = np.mean(y_filt[:5]) # starting point, average first five values
+    y_end = np.mean(y_filt[-5:]) # steady-state value, average last five values
+    K_g = y_end - y_start # process gain, change between start and end
+    T_total = t_rel[-1] # total duration
+    Tp_g = T_total / 4 # time constant, 1/4 of total time is a safe guess
+    Td_g = 10.0 # dead time / time delay
+    Tz_g = 1.0 # lead time, used to determine overshoot behavior and sensitivity to change
 
     # --- Model Configuration ---
     if model_name == 'FOPTD':
         func = func_foptd
         # Params: K, Tp1, Td, y0
         p0 = [K_g, Tp_g, Td_g, y_start]
+        # bounds start from 0 so that all values are positive
         bounds = ([-np.inf, 0, 0, -np.inf], [np.inf, np.inf, np.inf, np.inf])
         eqn_label = r'$G(s) = \frac{K}{T_{p1}s+1}e^{-T_ds}$'
         param_names = ['K', 'Tp1', 'Td', 'y0']

@@ -10,12 +10,17 @@ from Transfer_Function_Analysis.analyze_transfer_func_stability import *
 
 
 # --- 1. HELPER FUNCTIONS ---
+
+# build a virtual closed control loop and simulate the gains
 def simulate_response(Kp, Ki, plant):
     """Simulates the step response for a specific set of gains."""
     ctrl = ct.TransferFunction([Kp, Ki], [1, 0])
     try:
+        # close the loop
         sys = ct.feedback(plant * ctrl, 1)
         T_sim = np.linspace(0, 10000, 1000)
+
+        # conduct a virtual step response, record the output y_sim
         T_sim, y_sim = ct.step_response(sys, T_sim)
         return T_sim, y_sim
     except:
@@ -24,6 +29,8 @@ def simulate_response(Kp, Ki, plant):
 
 def calculate_itae_cost(Kp, Ki, plant):
     """Calculates the ITAE cost for a single parameter set."""
+
+    # ban negative gains
     if Kp < 0 or Ki < 0:
         return 1e9
 
@@ -35,9 +42,13 @@ def calculate_itae_cost(Kp, Ki, plant):
         T, y = ct.step_response(closed_loop, T)
         y = np.asarray(y).flatten()
 
+        # error is setpoint - y_value
         e = 1.0 - y
         dt = T[1] - T[0]
         # ITAE: Integral of Time-weighted Absolute Error
+        # multiply the error by the time it occurred.
+        # logic, error at the start is acceptable, but error after
+        # 100 seconds is not.
         itae = np.sum(T * np.abs(e)) * dt
 
         # Penalties for stability (Overshoot < 20%, Undershoot > -20%)
@@ -54,7 +65,6 @@ def setup_experiment_dir(folder_name):
     output_dir = Path(folder_name)
     output_dir.mkdir(parents=True, exist_ok=True)
     return output_dir
-
 
 def save_plots(output_dir, round_num, history, best_Kp, best_Ki, plant):
     """Generates and saves the convergence and response plots."""
