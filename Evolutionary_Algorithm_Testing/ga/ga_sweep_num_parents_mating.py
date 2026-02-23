@@ -17,7 +17,7 @@ if __name__ == "__main__":
         'patience_limit': 25,
         'max_iters': 200,
         'improvement_tol': 0.01,
-        'n_rounds': 50
+        'n_rounds': 10  # <-- Changed to 10 for faster prototyping
     }
 
     ga_static_config = {
@@ -71,7 +71,7 @@ if __name__ == "__main__":
         optimizer = GAOptimizer(run_config, tf_params)
         optimizer.run_experiment()
 
-        # Extract the 50 trial costs from this bin's history
+        # Extract the 10 trial costs from this bin's history
         bin_costs = optimizer.agg_history['costs']
 
         # Store for plotting
@@ -96,7 +96,7 @@ if __name__ == "__main__":
     plt.close()
     print(f"Saved Line Plot: {line_plot_path}")
 
-    # Plot 2: Box Plot (Distribution of 50 Trials per Bin)
+    # Plot 2: Box Plot (Distribution of Trials per Bin)
     plt.figure(figsize=(12, 6))
     plt.boxplot(all_bins_costs, tick_labels=pct_labels)
     plt.title(f'Distribution of ITAE Costs ({base_config["n_rounds"]} Trials/Bin)')

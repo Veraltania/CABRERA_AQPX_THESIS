@@ -4,9 +4,69 @@ import matplotlib.pyplot as plt
 import control as ct
 from pathlib import Path
 from abc import ABC, abstractmethod
+from numba import njit  # <-- NUMBA IMPORTED HERE
 
 # Assuming your custom local modules are accessible
 from Transfer_Function_Analysis.analyze_transfer_func_stability import *
+
+
+# --- HIGH-SPEED NUMBA FITNESS FUNCTION ---
+@njit
+def fast_itae_numba(Kp, Ki, K_plant, T_plant, delay):
+    """
+    Blazing fast discrete simulation for any First-Order Plus Dead Time (FOPDT) system.
+    G(s) = K_plant / (T_plant*s + 1) * e^(-delay*s)
+    """
+    t_end = 10000.0
+    steps = 1000
+    dt = t_end / steps
+
+    delay_steps = int(delay / dt)
+    u_history = np.zeros(delay_steps + 1)
+    buffer_idx = 0
+
+    y = 0.0
+    integral_e = 0.0
+    itae = 0.0
+    setpoint = 1.0
+
+    max_y = -1e9
+    min_y = 1e9
+
+    for i in range(steps):
+        t = i * dt
+        error = setpoint - y
+
+        # ITAE calculation
+        itae += t * abs(error) * dt
+
+        # PI Controller
+        integral_e += error * dt
+        u = (Kp * error) + (Ki * integral_e)
+
+        # Delay Buffer Management
+        u_history[buffer_idx] = u
+        delayed_idx = (buffer_idx + 1) % len(u_history)
+        u_delayed = u_history[delayed_idx]
+
+        # Plant Dynamics (Euler Integration)
+        dy = (K_plant * u_delayed - y) / T_plant
+        y += dy * dt
+
+        # Track limits for constraints
+        if y > max_y: max_y = y
+        if y < min_y: min_y = y
+
+        buffer_idx = delayed_idx
+
+    # Apply standard constraints
+    if max_y > 1.2 or min_y < -0.2:
+        itae += 1e9
+
+    return np.log10(max(itae, 1e-12))
+
+
+# -----------------------------------------
 
 
 class EvolutionaryOptimizer(ABC):
@@ -24,14 +84,13 @@ class EvolutionaryOptimizer(ABC):
         self.n_rounds = config.get('n_rounds', 50)
 
         # 3. Auto-Generate Output Directory Name
-        # If the user provides a custom folder name, use it. Otherwise, build a descriptive one.
         folder_name = config.get(
             'output_folder',
             f"experiment_images_{self.algo_name.lower()}_population_{self.pop_size}"
         )
         self.output_dir = self.setup_experiment_dir(folder_name)
 
-        # 4. Define Plant and Constraints
+        # 4. Define Plant and Constraints (for the final response plot)
         self.plant = define_transfer_func(
             tf_params['tf_num'],
             tf_params['tf_den'],
@@ -39,6 +98,11 @@ class EvolutionaryOptimizer(ABC):
             tf_params['tf_n_pade']
         )
         self.max_kp = define_guardrail_gain(self.plant)
+
+        # --- EXTRACT RAW PARAMS FOR NUMBA ---
+        self.K_plant = tf_params['tf_num'][0]
+        self.T_plant = tf_params['tf_den'][0]
+        self.delay = tf_params['tf_delay']
 
         # 5. History Tracking for Summaries
         self.agg_history = {'iterations': [], 'costs': [], 'kp': [], 'ki': []}
@@ -51,6 +115,7 @@ class EvolutionaryOptimizer(ABC):
         return output_dir
 
     def simulate_response(self, Kp, Ki):
+        # We leave this alone because it's only called once at the very end to plot
         ctrl = ct.TransferFunction([Kp, Ki], [1, 0])
         try:
             sys = ct.feedback(self.plant * ctrl, 1)
@@ -62,21 +127,20 @@ class EvolutionaryOptimizer(ABC):
     def calculate_itae_cost(self, Kp, Ki):
         if Kp < 0 or Ki < 0:
             return np.log10(1e9)
+
         try:
-            controller = ct.TransferFunction([Kp, Ki], [1, 0])
-            closed_loop = ct.feedback(self.plant * controller, 1)
-            T = np.linspace(0, 10000, 1000)
-            T, y = ct.step_response(closed_loop, T)
-            y = np.asarray(y).flatten()
+            # the Python control library has significant overhead, making it slow
+            # Pass the gains AND the raw system parameters to compiled Numba function
+            return fast_itae_numba(
+                Kp,
+                Ki,
+                self.K_plant,
+                self.T_plant,
+                self.delay
+            )
 
-            e = 1.0 - y
-            dt = T[1] - T[0]
-            itae = np.sum(T * np.abs(e)) * dt
-
-            if np.max(y) > 1.2 or np.min(y) < -0.2:
-                itae += 1e9
-            return np.log10(max(itae, 1e-12))
-        except:
+        except Exception as e:
+            print(f"Cost calculation failed: {e}")
             return np.log10(1e9)
 
     def save_plots(self, round_num, history, best_Kp, best_Ki):
@@ -147,14 +211,4 @@ class EvolutionaryOptimizer(ABC):
 
     @abstractmethod
     def optimize_round(self, round_num):
-        """
-        Must be implemented by the child class (e.g., DEOptimizer, GAOptimizer).
-
-        Returns:
-            best_Kp (float): Best Proportional Gain found
-            best_Ki (float): Best Integral Gain found
-            final_cost (float): The final ITAE cost of the best parameters
-            iterations_run (int): The number of iterations/generations until stopping
-            cost_history (list): A list of the best costs per iteration/generation
-        """
         pass
