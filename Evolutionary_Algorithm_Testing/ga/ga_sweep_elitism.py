@@ -7,9 +7,9 @@ from Evolutionary_Algorithm_Testing.ga.ga_optimizer import GAOptimizer
 if __name__ == "__main__":
     # --- 1. GLOBAL CONFIGURATION ---
     tf_params = {
-        'tf_num': [51.39],
-        'tf_den': [1550.18, 1],
-        'tf_delay': 71.78,
+        'tf_num': [92.76],
+        'tf_den': [2629.13, 1],
+        'tf_delay': 54.00,
         'tf_n_pade': 2
     }
 
@@ -37,7 +37,7 @@ if __name__ == "__main__":
     elitism_pct_bins = np.linspace(start_elitism_pct, end_elitism_pct, num_bins)
 
     # --- 3. TOP-LEVEL MASTER DIRECTORY ---
-    TOP_LEVEL_DIR = "ga_sweep_elitism_tf1"
+    TOP_LEVEL_DIR = "ga_sweep_elitism_tf1_nighttime"
     os.makedirs(TOP_LEVEL_DIR, exist_ok=True)
 
     # Lists to track every single bin's stats for the comprehensive master reports

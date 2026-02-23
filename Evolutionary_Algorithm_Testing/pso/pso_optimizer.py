@@ -1,5 +1,6 @@
 import numpy as np
 import pyswarms as ps
+import math
 from Evolutionary_Algorithm_Testing.ea_optimizer import EvolutionaryOptimizer
 
 class EarlyStopping(Exception):
@@ -11,9 +12,18 @@ class PSOOptimizer(EvolutionaryOptimizer):
         super().__init__(config, tf_params)
 
         # 2. Extract PSO-specific options with robust defaults
-        self.c1 = config.get('c1', 0.7)  # Cognitive parameter
-        self.c2 = config.get('c2', 0.5)  # Social parameter
-        self.w = config.get('w', 0.9)  # Inertia weight
+        # Use the Clerc-Kennedy constriction factor for assured convergence
+        phi1 = config.get('phi1', 2.05)  # Cognitive parameter
+        phi2 = config.get('phi2', 2.05)  # Social parameter
+        phi = phi1 + phi2
+
+        # compute the Clerc-Kennedy constriction factor
+        chi = 2.0 / abs(2.0 - phi - math.sqrt(phi ** 2 - 4 * phi))
+
+        # Convert the Clerc-Kennedy-based params to usable values for PySwarm
+        self.w = chi
+        self.c1 = chi * phi1
+        self.c2 = chi * phi2
 
         # Package them for PySwarms
         self.options = {'c1': self.c1, 'c2': self.c2, 'w': self.w}
