@@ -1,0 +1,47 @@
+# --- DATA & FIGURES (The Big Stuff) ---
+# Ignore common image formats
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.tiff
+*.bmp
+*.svg
+*.pdf
+
+# Ignore large data files
+*.json
+*.sql
+*.zip
+*.tar.gz
+*.7z
+*.h5
+*.npy
+
+# Ignore specific folders where you dump data
+data/
+results/
+figures/
+output/
+temp/
+
+# --- OPERATING SYSTEM GARBAGE ---
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# --- PYTHON / DATA SCIENCE (If applicable) ---
+__pycache__/
+*.py[cod]
+.venv/
+env/
+.ipynb_checkpoints/
+
+# --- WRITING TOOLS (LaTeX Junk) ---
+*.aux
+*.log
+*.toc
+*.out
+*.fdb_latexmk
+*.fls
+*.synctex.gz
