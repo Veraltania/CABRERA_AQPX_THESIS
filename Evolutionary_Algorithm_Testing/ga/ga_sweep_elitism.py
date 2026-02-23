@@ -28,10 +28,10 @@ if __name__ == "__main__":
     # -> INPUT YOUR OPTIMAL MATING PERCENTAGE HERE <-
     OPTIMAL_MATING_PCT = 0.55
 
-    # Sweeping Elitism from 0% to 38% (High elitism halts exploration)
+    # Sweeping Elitism from 0% to 20% (High elitism halts exploration)
     start_elitism_pct = 0.00  # 0%
-    end_elitism_pct = 0.38  # 38%
-    num_bins = 20  # Creates exactly 2% increments (0%, 2%, 4%...)
+    end_elitism_pct = 0.20  # 20%
+    num_bins = 20  # Creates exactly 1% increments
 
     # Create an array of percentages
     elitism_pct_bins = np.linspace(start_elitism_pct, end_elitism_pct, num_bins)
