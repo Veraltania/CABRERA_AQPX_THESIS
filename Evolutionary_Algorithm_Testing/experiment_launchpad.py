@@ -23,8 +23,8 @@ if __name__ == "__main__":
     # --- 2. ALGORITHM-SPECIFIC OVERRIDES ---
     algo_specific_configs = {
         "GA": {
-            "num_parents_mating": int(base_config['population_size'] * 0.50),
-            "keep_elitism": int(base_config['population_size'] * 0.05),
+            "num_parents_mating": 0.55,
+            "keep_elitism": 0.05,
             "mutation_type": "adaptive",
             "crossover_type": "scattered",
         },
@@ -33,8 +33,8 @@ if __name__ == "__main__":
             "recombination": 0.7
         },
         "PSO": {
-            "phi1": 2.05,
-            "phi2": 2.05
+            "phi1": 2.5,
+            "phi2": 2.5
         }
     }
 
