@@ -1,0 +1,15 @@
+name: Auto-Deploy to Raspberry Pi
+
+on:
+  push:
+    branches:
+      - main  # Change this to master if your default branch is named master
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    steps:
+      - name: Pull latest code
+        run: |
+          cd /home/aquaponics/Cabrera_AQPX_Thesis
+          git pull origin main
