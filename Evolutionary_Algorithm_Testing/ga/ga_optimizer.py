@@ -1,6 +1,7 @@
 import pygad
 from Evolutionary_Algorithm_Testing.ea_optimizer import EvolutionaryOptimizer
 
+
 class GAOptimizer(EvolutionaryOptimizer):
     def __init__(self, config, tf_params):
         # 1. Initialize the base class to get self.pop_size, self.max_iters, etc.
@@ -57,7 +58,25 @@ class GAOptimizer(EvolutionaryOptimizer):
             return float(1.0 / (cost + 1e-8))
 
         tracker = Tracker(self.patience, self.tol, cost_wrapper)
-        bounds = [{'low': 0.001, 'high': self.max_kp}, {'low': 0.0, 'high': 0.01}]
+
+        # --- DYNAMIC BOUNDS BASED ON PLANT DIRECTION ---
+        is_reverse = getattr(self, 'is_reverse_acting', False)
+
+        if self.max_kp is None:
+            safe_limit = -100.0 if is_reverse else 100.0
+            print(f"   [!] No stability crossing found. Using fallback Kp boundary: {safe_limit}")
+        else:
+            safe_limit = float(self.max_kp)
+
+        if is_reverse:
+            min_kp, max_kp = safe_limit, -0.001
+            min_ki, max_ki = -0.01, -0.00001
+        else:
+            min_kp, max_kp = 0.001, safe_limit
+            min_ki, max_ki = 0.00001, 0.01
+
+        # Format bounds for PyGAD (List of dicts)
+        bounds = [{'low': min_kp, 'high': max_kp}, {'low': min_ki, 'high': max_ki}]
 
         # 4. Construct the PyGAD arguments dynamically
         ga_kwargs = {

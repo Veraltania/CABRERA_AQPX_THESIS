@@ -1,7 +1,6 @@
 from scipy.optimize import differential_evolution
 from Evolutionary_Algorithm_Testing.ea_optimizer import EvolutionaryOptimizer
 
-
 class DEOptimizer(EvolutionaryOptimizer):
     def __init__(self, config, tf_params):
         # 1. Initialize base class settings
@@ -45,7 +44,25 @@ class DEOptimizer(EvolutionaryOptimizer):
             return self.calculate_itae_cost(x[0], x[1])
 
         tracker = Tracker(self.patience, self.tol)
-        bounds = [(0.001, self.max_kp), (0.0, 0.001)]
+
+        # --- DYNAMIC BOUNDS BASED ON PLANT DIRECTION ---
+        is_reverse = getattr(self, 'is_reverse_acting', False)
+
+        if self.max_kp is None:
+            safe_limit = -100.0 if is_reverse else 100.0
+            print(f"   [!] No stability crossing found. Using fallback Kp boundary: {safe_limit}")
+        else:
+            safe_limit = float(self.max_kp)
+
+        if is_reverse:
+            min_kp, max_kp = safe_limit, -0.001
+            min_ki, max_ki = -0.01, -0.00001
+        else:
+            min_kp, max_kp = 0.001, safe_limit
+            min_ki, max_ki = 0.00001, 0.01
+
+        # Format bounds for SciPy DE (List of Tuples)
+        bounds = [(min_kp, max_kp), (min_ki, max_ki)]
 
         # 3. Apply the dynamically loaded DE configurations
         result = differential_evolution(
