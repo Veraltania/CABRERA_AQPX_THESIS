@@ -1,10 +1,7 @@
 import csv
-import numpy as np
-import matplotlib.pyplot as plt
-import control as ct
 from pathlib import Path
 from abc import ABC, abstractmethod
-from numba import njit  # <-- NUMBA IMPORTED HERE
+from numba import njit
 
 # Assuming your custom local modules are accessible
 from Transfer_Function_Analysis.analyze_transfer_func_stability import *
