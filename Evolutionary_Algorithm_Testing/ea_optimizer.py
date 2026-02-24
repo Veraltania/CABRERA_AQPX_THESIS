@@ -74,10 +74,6 @@ def fast_itae_numba(Kp, Ki, K_plant, T_plant, delay):
 
     return np.log10(max(itae, 1e-12))
 
-
-# -----------------------------------------
-
-
 class EvolutionaryOptimizer(ABC):
     def __init__(self, config, tf_params):
         """Initializes the generic optimizer and sets up the environment."""
