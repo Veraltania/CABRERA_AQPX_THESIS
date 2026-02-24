@@ -1,7 +1,6 @@
 import pygad
 from Evolutionary_Algorithm_Testing.ea_optimizer import EvolutionaryOptimizer
 
-
 class GAOptimizer(EvolutionaryOptimizer):
     def __init__(self, config, tf_params):
         # 1. Initialize the base class to get self.pop_size, self.max_iters, etc.
