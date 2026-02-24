@@ -7,9 +7,9 @@ from Evolutionary_Algorithm_Testing.ga.ga_optimizer import GAOptimizer
 if __name__ == "__main__":
     # --- 1. GLOBAL CONFIGURATION ---
     tf_params = {
-        'tf_num': [92.76],
-        'tf_den': [2629.13, 1],
-        'tf_delay': 54.00,
+        'tf_num': [-24.44],
+        'tf_den': [84487.79, 1],
+        'tf_delay': 0.50,
         'tf_n_pade': 2
     }
 
