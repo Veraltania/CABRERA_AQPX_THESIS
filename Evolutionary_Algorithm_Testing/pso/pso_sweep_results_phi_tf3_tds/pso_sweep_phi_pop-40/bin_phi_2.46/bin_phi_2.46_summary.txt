@@ -1,0 +1,7 @@
+--- PSO EXPERIMENT SUMMARY ---
+Total Rounds: 50
+Average Iterations: 30.4
+Average ITAE Cost:  3.30
+-----------------------------
+Kp: -94.23446 (+/- 7.52111)
+Ki: -0.619030 (+/- 0.482436)

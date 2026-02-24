@@ -58,7 +58,7 @@ class GAOptimizer(EvolutionaryOptimizer):
             return float(1.0 / (cost + 1e-8))
 
         tracker = Tracker(self.patience, self.tol, cost_wrapper)
-        bounds = [{'low': 0.001, 'high': self.max_kp}, {'low': 0.0, 'high': 0.001}]
+        bounds = [{'low': 0.001, 'high': self.max_kp}, {'low': 0.0, 'high': 0.01}]
 
         # 4. Construct the PyGAD arguments dynamically
         ga_kwargs = {

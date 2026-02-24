@@ -23,8 +23,8 @@ if __name__ == "__main__":
     # --- 2. ALGORITHM-SPECIFIC OVERRIDES ---
     algo_specific_configs = {
         "GA": {
-            "num_parents_mating": 0.55,
-            "keep_elitism": 0.05,
+            "num_parents_mating": 55,
+            "keep_elitism": base_config["population_size"]*0.05,
             "mutation_type": "adaptive",
             "crossover_type": "scattered",
         },

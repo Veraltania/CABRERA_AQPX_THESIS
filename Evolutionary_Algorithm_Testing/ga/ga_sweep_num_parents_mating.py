@@ -32,7 +32,7 @@ if __name__ == "__main__":
     parent_mating_pct_bins = np.linspace(start_pct, end_pct, num_bins)
 
     # --- TOP-LEVEL MASTER DIRECTORY ---
-    TOP_LEVEL_DIR = "ga_sweep_results_mating-percentage_tf1_nighttime"
+    TOP_LEVEL_DIR = "ga_sweep_results_mating-percentage_tf3_tds"
     os.makedirs(TOP_LEVEL_DIR, exist_ok=True)
 
     # Lists to track every single bin's stats for the comprehensive master reports

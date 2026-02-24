@@ -37,7 +37,7 @@ if __name__ == "__main__":
     elitism_pct_bins = np.linspace(start_elitism_pct, end_elitism_pct, num_bins)
 
     # --- 3. TOP-LEVEL MASTER DIRECTORY ---
-    TOP_LEVEL_DIR = "ga_sweep_elitism_tf1_nighttime"
+    TOP_LEVEL_DIR = "ga_sweep_elitism_test"
     os.makedirs(TOP_LEVEL_DIR, exist_ok=True)
 
     # Lists to track every single bin's stats for the comprehensive master reports

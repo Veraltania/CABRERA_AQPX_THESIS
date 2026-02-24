@@ -7,9 +7,9 @@ from Evolutionary_Algorithm_Testing.pso.pso_optimizer import PSOOptimizer
 if __name__ == "__main__":
     # --- 1. GLOBAL CONFIGURATION ---
     tf_params = {
-        'tf_num': [-14.03],
-        'tf_den': [31793.98, 1],
-        'tf_delay': 2.19,
+        'tf_num': [45.52],
+        'tf_den': [2654.54, 1],
+        'tf_delay': 0.00,
         'tf_n_pade': 2
     }
 
@@ -34,7 +34,7 @@ if __name__ == "__main__":
     phi_bins = np.linspace(start_phi, end_phi, num_bins)
 
     # --- 3. TOP-LEVEL MASTER DIRECTORY ---
-    TOP_LEVEL_DIR = "pso_sweep_results_phi_tf3_tds"
+    TOP_LEVEL_DIR = "pso_sweep_results_phi_tf3_do_daytime"
     os.makedirs(TOP_LEVEL_DIR, exist_ok=True)
 
     # Lists to track every single bin's stats for the comprehensive master reports

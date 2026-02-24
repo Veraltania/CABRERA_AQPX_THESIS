@@ -62,10 +62,11 @@ def find_all_crossings(sys):
     crossings = sorted(list(set(crossings)))
     return crossings
 
-
-def define_guardrail_gain(plant):
+def define_guardrail_gain(plant, find_negative_gain=False):
     """
-    Finds the lowest positive gain that causes instability by verifying closed-loop poles.
+    Finds the guardrail gain that causes instability.
+    If find_negative_gain is True, looks for the negative gain closest to zero.
+    Otherwise, looks for the lowest positive gain.
     """
     all_crossings = find_all_crossings(plant)
     if not all_crossings:
@@ -74,16 +75,16 @@ def define_guardrail_gain(plant):
     valid_boundaries = []
 
     for w, k in all_crossings:
-        # We generally care about positive controller gains for the boundary
-        if k <= 0:
+        # Filter based on the direction we are searching
+        if not find_negative_gain and k <= 0:
+            continue
+        if find_negative_gain and k >= 0:
             continue
 
         # Create the closed-loop system AT this crossing gain
         cl_sys = ct.feedback(k * plant, 1)
         poles = cl_sys.poles()
 
-        # Check if any pole is strictly in the Right-Half Plane (ignoring the crossing pole)
-        # We use 1e-4 as a tolerance for floating point math on the imaginary axis
         is_valid_boundary = True
         for p in poles:
             if p.real > 1e-4:
@@ -96,8 +97,11 @@ def define_guardrail_gain(plant):
     if not valid_boundaries:
         return None
 
-    # Return the valid crossing with the lowest gain
-    return min(valid_boundaries, key=lambda x: x[1])[1]
+    # Return the valid crossing closest to zero in the desired direction
+    if find_negative_gain:
+        return max(valid_boundaries, key=lambda x: x[1])[1] * 0.6 # Max negative value (closest to 0)
+    else:
+        return min(valid_boundaries, key=lambda x: x[1])[1] * 0.6 # Min positive value
 
 def display_root_locus(plant, crossings=None):
     """
@@ -146,9 +150,9 @@ def display_root_locus(plant, crossings=None):
 # --- Usage ---
 if __name__ == '__main__':
     # System Parameters
-    num = [51.39]
-    den = [1550.18, 1]
-    delay = 71.78
+    num = [-14.03]
+    den = [31793.98, 1]
+    delay = 2.19
     n_pade = 3
 
     # 1. Define System

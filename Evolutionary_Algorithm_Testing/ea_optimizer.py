@@ -16,6 +16,7 @@ def fast_itae_numba(Kp, Ki, K_plant, T_plant, delay):
     """
     Blazing fast discrete simulation for any First-Order Plus Dead Time (FOPDT) system.
     G(s) = K_plant / (T_plant*s + 1) * e^(-delay*s)
+    Now utilizing highly stable RK4 integration.
     """
     t_end = 10000.0
     steps = 1000
@@ -49,11 +50,22 @@ def fast_itae_numba(Kp, Ki, K_plant, T_plant, delay):
         delayed_idx = (buffer_idx + 1) % len(u_history)
         u_delayed = u_history[delayed_idx]
 
-        # Plant Dynamics (Euler Integration)
-        dy = (K_plant * u_delayed - y) / T_plant
-        y += dy * dt
+        # ---------------------------------------------------------
+        # Plant Dynamics (Runge-Kutta 4th Order Integration)
+        # ---------------------------------------------------------
+        k1 = (K_plant * u_delayed - y) / T_plant
+        k2 = (K_plant * u_delayed - (y + 0.5 * dt * k1)) / T_plant
+        k3 = (K_plant * u_delayed - (y + 0.5 * dt * k2)) / T_plant
+        k4 = (K_plant * u_delayed - (y + dt * k3)) / T_plant
 
-        # Track limits for constraints
+        y += (dt / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
+        # ---------------------------------------------------------
+
+        # Early exit if y explodes to save computation time
+        if abs(y) > 1e6:
+            return 9.0
+
+            # Track limits for constraints
         if y > max_y: max_y = y
         if y < min_y: min_y = y
 
@@ -90,19 +102,31 @@ class EvolutionaryOptimizer(ABC):
         )
         self.output_dir = self.setup_experiment_dir(folder_name)
 
-        # 4. Define Plant and Constraints (for the final response plot)
-        self.plant = define_transfer_func(
-            tf_params['tf_num'],
-            tf_params['tf_den'],
-            tf_params['tf_delay'],
-            tf_params['tf_n_pade']
-        )
-        self.max_kp = define_guardrail_gain(self.plant)
-
         # --- EXTRACT RAW PARAMS FOR NUMBA ---
         self.K_plant = tf_params['tf_num'][0]
         self.T_plant = tf_params['tf_den'][0]
-        self.delay = tf_params['tf_delay']
+
+        # --- DELAY OVERRIDE LOGIC ---
+        extracted_delay = tf_params.get('tf_delay', 0.0)
+        if extracted_delay == 0.0:
+            print("   [!] System delay is 0.0. Overriding to 0.5s to allow mathematical stability bounding.")
+            self.delay = 1
+        else:
+            self.delay = extracted_delay
+
+        # Determine if we need a negative gain guardrail
+        self.is_reverse_acting = self.K_plant < 0
+
+        # 4. Define Plant and Constraints (Using self.delay instead of the raw dictionary value)
+        self.plant = define_transfer_func(
+            tf_params['tf_num'],
+            tf_params['tf_den'],
+            self.delay,
+            tf_params.get('tf_n_pade', 2)
+        )
+
+        # Pass the flag to the guardrail function
+        self.max_kp = define_guardrail_gain(self.plant, find_negative_gain=self.is_reverse_acting)
 
         # 5. History Tracking for Summaries
         self.agg_history = {'iterations': [], 'costs': [], 'kp': [], 'ki': []}
@@ -114,23 +138,8 @@ class EvolutionaryOptimizer(ABC):
         output_dir.mkdir(parents=True, exist_ok=True)
         return output_dir
 
-    def simulate_response(self, Kp, Ki):
-        # We leave this alone because it's only called once at the very end to plot
-        ctrl = ct.TransferFunction([Kp, Ki], [1, 0])
-        try:
-            sys = ct.feedback(self.plant * ctrl, 1)
-            T_sim = np.linspace(0, 10000, 1000)
-            return ct.step_response(sys, T_sim)
-        except:
-            return None, None
-
     def calculate_itae_cost(self, Kp, Ki):
-        if Kp < 0 or Ki < 0:
-            return np.log10(1e9)
-
         try:
-            # the Python control library has significant overhead, making it slow
-            # Pass the gains AND the raw system parameters to compiled Numba function
             return fast_itae_numba(
                 Kp,
                 Ki,
@@ -138,27 +147,45 @@ class EvolutionaryOptimizer(ABC):
                 self.T_plant,
                 self.delay
             )
-
         except Exception as e:
             print(f"Cost calculation failed: {e}")
             return np.log10(1e9)
 
+    # --- Refactored ea_optimizer.py snippets ---
+
+    def simulate_response(self, Kp, Ki, amplitude=1.0):
+        """Simulates response with a custom step amplitude."""
+        ctrl = ct.TransferFunction([Kp, Ki], [1, 0])
+        try:
+            # The closed-loop system
+            sys = ct.feedback(self.plant * ctrl, 1)
+            T_sim = np.linspace(0, 10000, 1000)
+
+            # Multiply the unit step response by the desired amplitude
+            T, y = ct.step_response(sys, T_sim)
+            return T, y * amplitude
+        except:
+            return None, None
+
     def save_plots(self, round_num, history, best_Kp, best_Ki):
-        # Convergence Plot
-        plt.figure(figsize=(10, 4))
-        plt.plot(history, linewidth=2)
-        plt.title(f'{self.algo_name} Convergence - Round {round_num}')
-        plt.grid(True)
-        plt.savefig(self.output_dir / f'convergence_round_{round_num}.png')
-        plt.close()
+        # Determine step direction based on plant gain
+        step_amplitude = -1.0 if self.is_reverse_acting else 1.0
 
         # Step Response Plot
-        T_best, y_best = self.simulate_response(best_Kp, best_Ki)
+        T_best, y_best = self.simulate_response(best_Kp, best_Ki, amplitude=step_amplitude)
+
         plt.figure(figsize=(10, 6))
         if T_best is not None:
-            plt.plot(T_best, y_best, linewidth=3, label=f'Best {self.algo_name} Params')
-        plt.axhline(1.0, color='r', linestyle='--')
-        plt.title(f'Step Response - Round {round_num}')
+            label_text = f'Best Params (Step: {step_amplitude})'
+            plt.plot(T_best, y_best, linewidth=3, label=label_text)
+
+        # Update the target line to match the negative step
+        plt.axhline(step_amplitude, color='r', linestyle='--', label=f'Target ({step_amplitude})')
+
+        plt.title(
+            f'Negative Step Response - Round {round_num}' if self.is_reverse_acting else f'Step Response - Round {round_num}')
+        plt.ylabel('Output Response')
+        plt.xlabel('Time (s)')
         plt.grid(True)
         plt.legend()
         plt.savefig(self.output_dir / f'response_round_{round_num}.png')
@@ -179,7 +206,7 @@ class EvolutionaryOptimizer(ABC):
 
             # Subclass executes its specific algorithm here
             best_Kp, best_Ki, cost, iterations_run, cost_history = self.optimize_round(current_round)
-
+            print(f"   [RESULT] Best Params found: Kp = {best_Kp}, Ki = {best_Ki}")
             # Store and save data
             self.agg_history['iterations'].append(iterations_run)
             self.agg_history['costs'].append(cost)
