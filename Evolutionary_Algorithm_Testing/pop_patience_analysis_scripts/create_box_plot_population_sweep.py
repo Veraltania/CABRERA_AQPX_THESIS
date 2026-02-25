@@ -4,13 +4,12 @@ import re
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
-import numpy as np
 
 
 # --- 1. DATA LOADING ---
-def load_data(base_dir="results"):
+def load_data(base_dir="results_population_sweep_do_tf3_daytime"):
     print(f"--- Scanning '{base_dir}' for experiment data ---")
-    data = []
+    data_frames = []
     target_algos = ['DE', 'GA', 'PSO']
 
     for algo in target_algos:
@@ -33,142 +32,181 @@ def load_data(base_dir="results"):
             try:
                 df = pd.read_csv(latest_file)
                 cols = df.columns
-                fitness_vals = []
+
+                # Extract Cost
                 if 'Final_Cost_ITAE' in cols:
-                    fitness_vals = df['Final_Cost_ITAE']
+                    cost_vals = df['Final_Cost_ITAE']
                 elif 'Cost' in cols:
-                    fitness_vals = df['Cost']
-                elif len(cols) >= 3:
-                    fitness_vals = df.iloc[:, 2]
+                    cost_vals = df['Cost']
+                else:
+                    cost_vals = df.iloc[:, 2]  # Fallback based on your log structure
 
-                # Ensure numeric and drop NaNs right away
-                fitness_vals = pd.to_numeric(fitness_vals, errors='coerce').dropna()
+                # Extract Iterations
+                if 'Iterations_Run' in cols:
+                    iter_vals = df['Iterations_Run']
+                else:
+                    iter_vals = df.iloc[:, 1]  # Fallback based on your log structure
 
-                for val in fitness_vals:
-                    data.append({
-                        "Algorithm": algo,
-                        "Population Size": pop_size,
-                        "Fitness": val
-                    })
+                # Build a temporary DataFrame for this specific file
+                temp_df = pd.DataFrame({
+                    "Algorithm": algo,
+                    "Population Size": pop_size,
+                    "Cost": pd.to_numeric(cost_vals, errors='coerce'),
+                    "Iterations": pd.to_numeric(iter_vals, errors='coerce')
+                })
+
+                # Drop rows where either metric is NaN
+                temp_df.dropna(subset=['Cost', 'Iterations'], inplace=True)
+                data_frames.append(temp_df)
+
             except Exception as e:
                 print(f"[ERR] {latest_file}: {e}")
 
-    return pd.DataFrame(data)
+    if not data_frames:
+        return pd.DataFrame()
+
+    return pd.concat(data_frames, ignore_index=True)
 
 
 # --- 2. OUTLIER REMOVAL (IQR Method) ---
-def remove_outliers_iqr(df):
+def remove_outliers_iqr(df, value_col):
     """
     Removes outliers using the 1.5 * IQR rule, applied independently
-    to each Algorithm within each Population Size group.
+    to each Algorithm within each Population Size group, for a specific metric.
     """
-    print(f"Data points before outlier removal: {len(df)}")
+    print(f"Data points before outlier removal ({value_col}): {len(df)}")
 
     cleaned_rows = []
-
-    # Group by Pop Size and Algorithm to calculate IQR specifically for that set
     grouped = df.groupby(['Population Size', 'Algorithm'])
 
     for (pop, algo), group_df in grouped:
-        q1 = group_df['Fitness'].quantile(0.25)
-        q3 = group_df['Fitness'].quantile(0.75)
+        q1 = group_df[value_col].quantile(0.25)
+        q3 = group_df[value_col].quantile(0.75)
         iqr = q3 - q1
 
         lower_bound = q1 - 1.5 * iqr
         upper_bound = q3 + 1.5 * iqr
 
         # Keep only rows within bounds
-        mask = (group_df['Fitness'] >= lower_bound) & (group_df['Fitness'] <= upper_bound)
+        mask = (group_df[value_col] >= lower_bound) & (group_df[value_col] <= upper_bound)
         cleaned_rows.append(group_df[mask])
 
     df_clean = pd.concat(cleaned_rows, ignore_index=True)
-    print(f"Data points after outlier removal: {len(df_clean)} (Removed: {len(df) - len(df_clean)})")
+    print(f"Data points after outlier removal: {len(df_clean)} (Removed: {len(df) - len(df_clean)})\n")
     return df_clean
 
 
 # --- 3. THOROUGH PLOTTING ---
-def generate_thorough_plots(df):
+def generate_thorough_plots(df, metric_col, y_axis_label, output_dir):
     if df.empty:
-        print("No data found.")
+        print(f"No data found for {metric_col}.")
         return
 
     # --- STEP 1: CLEAN OUTLIERS ---
-    df_clean = remove_outliers_iqr(df)
+    df_clean = remove_outliers_iqr(df, metric_col)
 
     if df_clean.empty:
-        print("Error: All data was removed as outliers. Cannot plot.")
+        print(f"Error: All data was removed as outliers for {metric_col}. Cannot plot.")
         return
 
     # Sort cleaned data
     df_clean.sort_values(by=["Population Size", "Algorithm"], inplace=True)
 
     # --- STEP 2: CALCULATE TIGHT LIMITS (ON CLEAN DATA) ---
-    global_min = df_clean["Fitness"].min()
-    global_max = df_clean["Fitness"].max()
+    global_min = df_clean[metric_col].min()
+    global_max = df_clean[metric_col].max()
 
-    # Add a tiny buffer (e.g., 2%) for visual breathing room around the dots
     y_limit_top = global_max * 1.02
-    # Avoid division by zero if min is 0 (though unlikely for ITAE)
-    y_limit_bottom = global_min * 0.98 if global_min > 0 else global_min
-
-    print(f"Capping Y-Axis at: {y_limit_top:.2e} (Max Clean Data: {global_max:.2e})")
+    # Adjust bottom buffer if values are heavily negative vs positive
+    if global_min > 0:
+        y_limit_bottom = global_min * 0.98
+    else:
+        y_limit_bottom = global_min * 1.02
 
     sns.set_style("whitegrid")
 
-    # Create Grid using CLEAN data
+    # --- 3A. INDIVIDUAL PLOTS ---
+    for pop_size, group_data in df_clean.groupby("Population Size"):
+        plt.figure(figsize=(6, 5))
+
+        # 1. Box Plot
+        sns.boxplot(data=group_data, x="Algorithm", y=metric_col, hue="Algorithm",
+                    palette="viridis", dodge=False, width=0.5, fliersize=0)
+
+        # 2. Strip Plot
+        sns.stripplot(data=group_data, x="Algorithm", y=metric_col,
+                      color=".2", size=4, alpha=0.6, jitter=True)
+
+        plt.title(f"Algorithm Performance - Pop Size: {pop_size}", fontweight='bold')
+        plt.xlabel("Evolutionary Algorithm", fontweight='bold')
+        plt.ylabel(y_axis_label, fontweight='bold')
+        plt.ylim(y_limit_bottom, y_limit_top)
+
+        plt.tight_layout()
+        ind_filename = os.path.join(output_dir, f"pop_{pop_size}_{metric_col.lower()}_boxplot.png")
+        plt.savefig(ind_filename, dpi=300, bbox_inches='tight')
+        plt.close()  # Close figure to free memory
+
+    # --- 3B. COMBINED GRID PLOT ---
     g = sns.FacetGrid(
         df_clean,
         col="Population Size",
         col_wrap=3,
         sharex=False,
-        sharey=False,  # False so we can force our custom limits
+        sharey=False,
         height=4,
         aspect=1.2
     )
 
-    # 1. Box Plot (fliersize=0 is redundant now, but good practice)
-    g.map_dataframe(sns.boxplot,
-                    x="Algorithm",
-                    y="Fitness",
-                    hue="Algorithm",
-                    palette="viridis",
-                    dodge=False,
-                    width=0.5,
-                    fliersize=0)
+    g.map_dataframe(sns.boxplot, x="Algorithm", y=metric_col, hue="Algorithm",
+                    palette="viridis", dodge=False, width=0.5, fliersize=0)
+    g.map_dataframe(sns.stripplot, x="Algorithm", y=metric_col,
+                    color=".2", size=3, alpha=0.6, jitter=True)
 
-    # 2. Strip Plot (Cleaned data points only)
-    g.map_dataframe(sns.stripplot,
-                    x="Algorithm",
-                    y="Fitness",
-                    color=".2",
-                    size=3,
-                    alpha=0.6,
-                    jitter=True)
-
-    # --- 3. APPLY TIGHT AXIS LIMITS & LABELS ---
     for ax in g.axes.flat:
-        ax.set_yscale("log")
-        # Apply limits based on cleaned data range
         ax.set_ylim(y_limit_bottom, y_limit_top)
-
-        # Force X-Axis labels on every plot
         ax.tick_params(labelbottom=True)
-        ax.set_xlabel("")
+        # ADDED: X-Axis Label explicitly set for every subplot
+        ax.set_xlabel("Evolutionary Algorithm", fontweight='bold')
 
-        # Titles and Labels
     g.set_titles(col_template="Pop Size: {col_name}", fontweight='bold')
-    g.set_axis_labels("", "")
-    g.fig.supylabel("Cost (ITAE) - Log Scale (Outliers Removed)", fontweight='bold')
-    g.fig.suptitle("Algorithm Performance Distribution", y=1.02, fontsize=14)
+    g.set_axis_labels("Evolutionary Algorithm", "")  # Ensure FacetGrid knows the x-axis
+
+    # Set main y-axis label for the entire grid
+    g.fig.supylabel(y_axis_label, fontweight='bold')
+    g.fig.suptitle(f"Algorithm {metric_col} Distribution", y=1.02, fontsize=14)
 
     plt.tight_layout()
 
-    filename = "box_plots_population_sweep.png"
-    plt.savefig(filename, dpi=300, bbox_inches='tight')
-    print(f"[SUCCESS] Plot saved to: {filename}")
-    plt.show()
+    comb_filename = os.path.join(output_dir, f"combined_{metric_col.lower()}_boxplot.png")
+    plt.savefig(comb_filename, dpi=300, bbox_inches='tight')
+    print(f"[SUCCESS] Saved combined and individual plots for '{metric_col}' to '{output_dir}/'")
+    plt.close()
 
 
 if __name__ == "__main__":
-    df_results = load_data()
-    generate_thorough_plots(df_results)
+    base_dir = "results_population_sweep_do_tf3_daytime"
+    df_results = load_data(base_dir=base_dir)
+
+    if df_results.empty:
+        print("Failed to load any data.")
+    else:
+        # Create an output directory for the generated images
+        output_directory = f"population_sweep_plots_{base_dir}"
+        os.makedirs(output_directory, exist_ok=True)
+
+        print(f"\n--- Generating Plots for Final Cost (ITAE) ---")
+        generate_thorough_plots(
+            df=df_results,
+            metric_col="Cost",
+            y_axis_label="Log10(ITAE Cost) (Outliers Removed)",
+            output_dir=output_directory
+        )
+
+        print(f"\n--- Generating Plots for Iterations Run ---")
+        generate_thorough_plots(
+            df=df_results,
+            metric_col="Iterations",
+            y_axis_label="Number of Iterations (Outliers Removed)",
+            output_dir=output_directory
+        )

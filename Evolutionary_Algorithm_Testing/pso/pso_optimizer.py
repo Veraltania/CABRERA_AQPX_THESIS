@@ -90,11 +90,11 @@ class PSOOptimizer(EvolutionaryOptimizer):
             # Searching in negative territory
             # min bound must be smaller (more negative) than max bound
             min_kp, max_kp = safe_limit, -0.001
-            min_ki, max_ki = -0.01, -0.00001
+            min_ki, max_ki = -0.01, -0.0001
         else:
             # Standard direct-acting
             min_kp, max_kp = 0.001, safe_limit
-            min_ki, max_ki = 0.00001, 0.01
+            min_ki, max_ki = 0.0001, 0.01
 
         # 3. Explicitly force float64 so PySwarms doesn't complain
         bounds = (

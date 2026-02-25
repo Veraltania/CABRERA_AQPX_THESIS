@@ -70,10 +70,10 @@ class GAOptimizer(EvolutionaryOptimizer):
 
         if is_reverse:
             min_kp, max_kp = safe_limit, -0.001
-            min_ki, max_ki = -0.01, -0.00001
+            min_ki, max_ki = -0.01, -0.0001
         else:
             min_kp, max_kp = 0.001, safe_limit
-            min_ki, max_ki = 0.00001, 0.01
+            min_ki, max_ki = 0.0001, 0.01
 
         # Format bounds for PyGAD (List of dicts)
         bounds = [{'low': min_kp, 'high': max_kp}, {'low': min_ki, 'high': max_ki}]
