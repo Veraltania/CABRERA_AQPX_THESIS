@@ -185,7 +185,7 @@ def generate_thorough_plots(df, metric_col, y_axis_label, output_dir):
 
 
 if __name__ == "__main__":
-    base_dir = "results_population_sweep_do_tf3_daytime"
+    base_dir = "results_population_sweep_tds_tf2"
     df_results = load_data(base_dir=base_dir)
 
     if df_results.empty:
