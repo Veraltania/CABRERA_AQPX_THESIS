@@ -8,6 +8,7 @@ import matplotlib.ticker as ticker
 import time
 from datetime import datetime
 from tqdm import tqdm
+import csv
 
 try:
     from Evolutionary_Algorithm_Testing.de.de_optimizer import DEOptimizer
@@ -19,8 +20,12 @@ except ImportError as e:
 
 ALGO_MAP = {'DE': DEOptimizer, 'GA': GAOptimizer, 'PSO': PSOOptimizer}
 
+
 # --- 1. WORKER FUNCTION ---
 def worker(task):
+    # Capture the start time for this specific task
+    worker_start_time = time.time()
+
     algo_name, pop_size, base_config, tf_params, base_output_folder, algo_specific_config = task
 
     output_folder = os.path.join(base_output_folder, algo_name.lower(), f"pop_{pop_size}")
@@ -43,7 +48,13 @@ def worker(task):
         optimizer.run_experiment()
     except Exception as e:
         print(f"\n[CRASH] {algo_name} Pop {pop_size}: {e}")
-        return {"algo": algo_name, "pop_size": pop_size, "fitness": []}
+        worker_end_time = time.time()
+        return {
+            "algo": algo_name,
+            "pop_size": pop_size,
+            "fitness": [],
+            "elapsed_time": worker_end_time - worker_start_time
+        }
 
     time.sleep(1.0)
 
@@ -65,7 +76,15 @@ def worker(task):
         except Exception as e:
             print(f"Error reading CSV for {algo_name} Pop {pop_size}: {e}")
 
-    return {"algo": algo_name, "pop_size": pop_size, "fitness": fitness_results}
+    # Capture the end time and calculate elapsed time for this task
+    worker_end_time = time.time()
+    return {
+        "algo": algo_name,
+        "pop_size": pop_size,
+        "fitness": fitness_results,
+        "elapsed_time": worker_end_time - worker_start_time
+    }
+
 
 # --- 2. DATA PROCESSING ---
 def save_checkpoint(all_data):
@@ -86,6 +105,7 @@ def save_checkpoint(all_data):
     df.to_csv(filename, index=False)
     print(f"Checkpoint saved to: {filename}")
     return df
+
 
 # --- 3. THE CLEAN PLOT ---
 def generate_standardized_plot(df):
@@ -120,8 +140,14 @@ def generate_standardized_plot(df):
     print(f"[SUCCESS] Plot saved as '{filename}'")
     plt.show()
 
+
 # --- 4. EXECUTION ---
 if __name__ == "__main__":
+    # 1. Capture total start time
+    start_time_sec = time.time()
+    start_datetime = datetime.now()
+    print(f"\n--- EXECUTION STARTED: {start_datetime.strftime('%Y-%m-%d %H:%M:%S')} ---")
+
     START_POP = 10
     END_POP = 100
     STEP_SIZE = 10
@@ -144,8 +170,8 @@ if __name__ == "__main__":
     # Algorithm-specific configuration overrides
     algo_specific_configs = {
         "GA": {
-            "mating_ratio": 0.55,   # Converted to a ratio for dynamic scaling!
-            "elitism_ratio": 0.05,  # Converted to a ratio for dynamic scaling!
+            "mating_ratio": 0.55,
+            "elitism_ratio": 0.05,
             "mutation_type": "adaptive",
             "crossover_type": "scattered",
         },
@@ -182,3 +208,50 @@ if __name__ == "__main__":
         generate_standardized_plot(df_results)
     else:
         print("No data collected.")
+
+    # 2. Capture total end time and calculate elapsed
+    end_time_sec = time.time()
+    end_datetime = datetime.now()
+    elapsed_seconds = end_time_sec - start_time_sec
+
+    # 3. Format total time to HH:MM:SS
+    m, s = divmod(elapsed_seconds, 60)
+    h, m = divmod(m, 60)
+    elapsed_formatted = f"{int(h):02d}:{int(m):02d}:{s:05.2f}"
+
+    # 4. Print total timing to console
+    print(f"\n--- EXECUTION FINISHED: {end_datetime.strftime('%Y-%m-%d %H:%M:%S')} ---")
+    print(f"Total Time Elapsed: {elapsed_formatted} ({elapsed_seconds:.2f} pure seconds)")
+
+    # 5. Save TOTAL timing to CSV
+    timestamp_str = start_datetime.strftime('%Y%m%d_%H%M%S')
+    total_timing_filename = f"execution_timing_total_{timestamp_str}.csv"
+
+    with open(total_timing_filename, mode='w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow(["Start Time", "End Time", "Elapsed Time (HH:MM:SS)", "Elapsed Time (Seconds)"])
+        writer.writerow([
+            start_datetime.strftime('%Y-%m-%d %H:%M:%S'),
+            end_datetime.strftime('%Y-%m-%d %H:%M:%S'),
+            elapsed_formatted,
+            round(elapsed_seconds, 2)
+        ])
+    print(f"Total timing details saved to: {total_timing_filename}")
+
+    # 6. Save INDIVIDUAL WORKER timings to CSV
+    worker_timing_filename = f"execution_timing_workers_{timestamp_str}.csv"
+    with open(worker_timing_filename, mode='w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow(["Algorithm", "Population Size", "Elapsed Time (HH:MM:SS)", "Elapsed Time (Seconds)"])
+
+        # Sort results neatly by Algorithm, then Population Size
+        sorted_results = sorted(raw_results, key=lambda x: (x['algo'], x['pop_size']))
+
+        for res in sorted_results:
+            w_sec = res['elapsed_time']
+            wm, ws = divmod(w_sec, 60)
+            wh, wm = divmod(wm, 60)
+            w_formatted = f"{int(wh):02d}:{int(wm):02d}:{ws:05.2f}"
+            writer.writerow([res['algo'], res['pop_size'], w_formatted, round(w_sec, 2)])
+
+    print(f"Individual worker timings saved to: {worker_timing_filename}\n")
