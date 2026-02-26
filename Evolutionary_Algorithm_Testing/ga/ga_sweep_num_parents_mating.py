@@ -1,10 +1,86 @@
 import os
 import csv
 import numpy as np
+import time
+from datetime import datetime
+from concurrent.futures import ProcessPoolExecutor, as_completed
+
+# --- MATPLOTLIB OPTIMIZATION ---
+import matplotlib
+
+matplotlib.use('Agg')  # Use non-interactive backend for faster, thread-safe background plotting
 import matplotlib.pyplot as plt
+
 from Evolutionary_Algorithm_Testing.ga.ga_optimizer import GAOptimizer
 
+
+# --- WORKER FUNCTION FOR MULTIPROCESSING ---
+# Note: This must be defined at the top level so it can be pickled by multiprocessing
+def run_single_ga_experiment(params):
+    pop_size = params['pop_size']
+    pct = params['pct']
+    num_parents = params['num_parents']
+    pct_label = params['pct_label']
+    base_config = params['base_config']
+    tf_params = params['tf_params']
+    master_sweep_dir = params['master_sweep_dir']
+
+    # Dynamic static config based on current pop_size
+    ga_static_config = {
+        "keep_elitism": int(pop_size * 0.05),
+        "mutation_type": "adaptive",
+        "crossover_type": "scattered",
+    }
+
+    run_config = base_config.copy()
+    run_config.update(ga_static_config)
+    run_config['population_size'] = pop_size
+    run_config['num_parents_mating'] = num_parents
+
+    bin_folder_name = os.path.join(master_sweep_dir, f"bin_mating_{pct_label}pct")
+    os.makedirs(bin_folder_name, exist_ok=True)
+    run_config['output_folder'] = bin_folder_name
+
+    # Capture start time for this specific bin
+    bin_start_time = time.time()
+
+    # Instantiate and run the GA Optimizer
+    optimizer = GAOptimizer(run_config, tf_params)
+    optimizer.run_experiment()
+
+    # Capture end time
+    bin_end_time = time.time()
+    elapsed_time = bin_end_time - bin_start_time
+
+    # Extract the history
+    bin_costs = optimizer.agg_history['costs']
+    bin_iters = optimizer.agg_history['iterations']
+
+    # Return a comprehensive dictionary of all necessary data
+    return {
+        'pop_size': pop_size,
+        'pct': pct,
+        'pct_label': f"{pct_label}%",
+        'min_cost': np.min(bin_costs),
+        'max_cost': np.max(bin_costs),
+        'mean_cost': np.mean(bin_costs),
+        'std_cost': np.std(bin_costs),
+        'min_iter': np.min(bin_iters),
+        'max_iter': np.max(bin_iters),
+        'mean_iter': np.mean(bin_iters),
+        'std_iter': np.std(bin_iters),
+        'elapsed_time': elapsed_time,
+        'raw_costs': bin_costs,
+        'raw_iters': bin_iters
+    }
+
+
 if __name__ == "__main__":
+    # --- Capture total start time ---
+    start_time_sec = time.time()
+    start_datetime = datetime.now()
+    print(f"\n--- EXECUTION STARTED: {start_datetime.strftime('%Y-%m-%d %H:%M:%S')} ---")
+
     # --- 1. GLOBAL CONFIGURATION ---
     tf_params = {
         'tf_num': [-24.44],
@@ -17,27 +93,17 @@ if __name__ == "__main__":
         'patience_limit': 25,
         'max_iters': 200,
         'improvement_tol': 0.01,
-        'n_rounds': 50  # Keep at 50 for the final high-fidelity run!
+        'n_rounds': 50
     }
 
-    # Array of population sizes to sweep across
     population_sizes = [20, 40, 60, 80, 100]
-
-    # --- 2. SWEEP CONFIGURATION (PERCENTAGES) ---
-    start_pct = 0.05  # 5%
-    end_pct = 1.00  # 100%
-    num_bins = 20
-
-    # Create an array of percentages: [0.05, 0.1, ..., 1.0]
+    start_pct = 0.1
+    end_pct = 1.00
+    num_bins = 10
     parent_mating_pct_bins = np.linspace(start_pct, end_pct, num_bins)
 
-    # --- TOP-LEVEL MASTER DIRECTORY ---
     TOP_LEVEL_DIR = "ga_sweep_results_mating-percentage_tf3_tds_test"
     os.makedirs(TOP_LEVEL_DIR, exist_ok=True)
-
-    # Lists to track every single bin's stats for the comprehensive master reports
-    final_report_cost_data = []
-    final_report_iter_data = []
 
     print("==========================================================")
     print("                 STARTING 2D MATING SWEEP")
@@ -46,118 +112,105 @@ if __name__ == "__main__":
     print(f"Mating Percentages       : {[f'{int(p * 100)}%' for p in parent_mating_pct_bins]}")
     print("==========================================================\n")
 
-    # --- 3. EXPERIMENT EXECUTION (OUTER LOOP: POPULATION) ---
+    # --- 2. BUILD TASK LIST FOR MULTIPROCESSING ---
+    tasks = []
     for pop_size in population_sizes:
-        print(f"\n\n{'*' * 70}")
-        print(f"--- SWEEPING POPULATION SIZE: {pop_size} ---")
-        print(f"{'*' * 70}")
-
         MASTER_SWEEP_DIR = os.path.join(TOP_LEVEL_DIR, f"ga_sweep_mating_pct_pop-{pop_size}")
         os.makedirs(MASTER_SWEEP_DIR, exist_ok=True)
 
-        # Dynamic static config based on current pop_size
-        ga_static_config = {
-            "keep_elitism": int(pop_size * 0.05),
-            "mutation_type": "adaptive",
-            "crossover_type": "scattered",
-        }
-
-        # Arrays for Cost Plotting
-        all_bins_costs = []
-        avg_costs = []
-
-        # Arrays for Iteration Plotting
-        all_bins_iters = []
-        avg_iters = []
-
-        pct_labels = []
-
-        # Lists to track just THIS population's stats for its local reports
-        pop_specific_cost_data = []
-        pop_specific_iter_data = []
-
-        # --- INNER LOOP: MATING PERCENTAGE ---
         for pct in parent_mating_pct_bins:
-            num_parents = int(pop_size * pct)
-            num_parents = max(2, num_parents)  # Guardrail: At least 2 parents needed
+            num_parents = max(2, int(pop_size * pct))
+            tasks.append({
+                'pop_size': pop_size,
+                'pct': pct,
+                'num_parents': num_parents,
+                'pct_label': int(pct * 100),
+                'base_config': base_config,
+                'tf_params': tf_params,
+                'master_sweep_dir': MASTER_SWEEP_DIR
+            })
 
-            pct_label = int(pct * 100)
-            pct_labels.append(f"{pct_label}%")
+    # --- 3. EXECUTE TASKS CONCURRENTLY ---
+    all_results = []
+    total_tasks = len(tasks)
 
-            print(f"\n{'#' * 60}")
-            print(f"GA EXPERIMENT: Pop={pop_size} | Mating={pct_label}% (N={num_parents})")
-            print(f"{'#' * 60}")
+    print(f"Starting multiprocessing pool with {total_tasks} total configurations...")
 
-            run_config = base_config.copy()
-            run_config.update(ga_static_config)
-            run_config['population_size'] = pop_size
-            run_config['num_parents_mating'] = num_parents
+    # ProcessPoolExecutor automatically uses all available CPU cores
+    with ProcessPoolExecutor() as executor:
+        # Submit all tasks
+        futures = {executor.submit(run_single_ga_experiment, task): task for task in tasks}
 
-            bin_folder_name = os.path.join(MASTER_SWEEP_DIR, f"bin_mating_{pct_label}pct")
-            run_config['output_folder'] = bin_folder_name
+        # Gather results as they complete
+        completed = 0
+        for future in as_completed(futures):
+            try:
+                result = future.result()
+                all_results.append(result)
+                completed += 1
+                print(
+                    f"Progress: [{completed}/{total_tasks}] Completed Pop={result['pop_size']}, Mating={result['pct_label']}")
+            except Exception as exc:
+                print(f"A worker generated an exception: {exc}")
 
-            # Instantiate and run the optimized code
-            optimizer = GAOptimizer(run_config, tf_params)
-            optimizer.run_experiment()
+    # Sort results to ensure ordered processing for plots and reports
+    all_results.sort(key=lambda x: (x['pop_size'], x['pct']))
 
-            # Extract the 50 trial costs AND iterations from this bin's history
-            bin_costs = optimizer.agg_history['costs']
-            bin_iters = optimizer.agg_history['iterations']
+    # --- 4. DATA AGGREGATION & BULK DISK I/O ---
+    print("\nAll GA experiments finished! Generating plots and saving CSV reports...")
 
-            # --- COST STATISTICS ---
-            min_cost = np.min(bin_costs)
-            max_cost = np.max(bin_costs)
-            mean_cost = np.mean(bin_costs)
-            std_cost = np.std(bin_costs)
+    final_report_cost_data = []
+    final_report_iter_data = []
+    worker_timing_data = []
 
-            # --- ITERATION STATISTICS ---
-            min_iter = np.min(bin_iters)
-            max_iter = np.max(bin_iters)
-            mean_iter = np.mean(bin_iters)
-            std_iter = np.std(bin_iters)
+    # Group results by population size for local reporting/plotting
+    for pop_size in population_sizes:
+        MASTER_SWEEP_DIR = os.path.join(TOP_LEVEL_DIR, f"ga_sweep_mating_pct_pop-{pop_size}")
 
-            # Store for plotting (Cost)
-            all_bins_costs.append(bin_costs)
-            avg_costs.append(mean_cost)
+        # Filter results for this specific population size
+        pop_results = [r for r in all_results if r['pop_size'] == pop_size]
 
-            # Store for plotting (Iterations)
-            all_bins_iters.append(bin_iters)
-            avg_iters.append(mean_iter)
+        pct_labels = [r['pct_label'] for r in pop_results]
+        all_bins_costs = [r['raw_costs'] for r in pop_results]
+        avg_costs = [r['mean_cost'] for r in pop_results]
 
-            # Dictionaries representing this specific bin's statistics
-            bin_stats_cost = {
-                'Population': pop_size,
-                'Mating_Pct': f"{pct_label}%",
-                'Min_Cost': min_cost,
-                'Max_Cost': max_cost,
-                'Avg_Cost': mean_cost,
-                'Std_Cost': std_cost
-            }
+        all_bins_iters = [r['raw_iters'] for r in pop_results]
+        avg_iters = [r['mean_iter'] for r in pop_results]
 
-            bin_stats_iter = {
-                'Population': pop_size,
-                'Mating_Pct': f"{pct_label}%",
-                'Min_Iter': min_iter,
-                'Max_Iter': max_iter,
-                'Avg_Iter': mean_iter,
-                'Std_Iter': std_iter
-            }
+        pop_cost_rows = []
+        pop_iter_rows = []
 
-            # Store for the local population reports
-            pop_specific_cost_data.append(bin_stats_cost)
-            pop_specific_iter_data.append(bin_stats_iter)
+        for r in pop_results:
+            # Build data for global and local reports
+            cost_row = [r['pop_size'], r['pct_label'], r['min_cost'], r['max_cost'], r['mean_cost'], r['std_cost']]
+            iter_row = [r['pop_size'], r['pct_label'], r['min_iter'], r['max_iter'], r['mean_iter'], r['std_iter']]
 
-            # Store for the global master reports
-            final_report_cost_data.append(bin_stats_cost)
-            final_report_iter_data.append(bin_stats_iter)
+            pop_cost_rows.append(cost_row)
+            pop_iter_rows.append(iter_row)
+            final_report_cost_data.append(cost_row)
+            final_report_iter_data.append(iter_row)
 
-        # --- 4. VISUALIZATIONS & LOCAL REPORT PER POPULATION SIZE ---
-        print(f"\nGenerating Sweep Visualizations & Local Reports for Population {pop_size}...")
+            worker_timing_data.append([r['pop_size'], r['pct_label'], r['elapsed_time']])
 
-        # ---------------------------
-        #    COST VISUALIZATIONS
-        # ---------------------------
-        # Plot 1: Line Graph (Average Cost per Bin)
+        # --- LOCAL CSV REPORTS (Bulk Write) ---
+        local_cost_path = os.path.join(MASTER_SWEEP_DIR, f"report_costs_pop_{pop_size}.csv")
+        with open(local_cost_path, mode='w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(
+                ['Population_Size', 'Mating_Percentage', 'Lowest_Cost_Log10_ITAE', 'Highest_Cost_Log10_ITAE',
+                 'Average_Cost_Log10_ITAE', 'Std_Dev_Log10_ITAE'])
+            writer.writerows(pop_cost_rows)
+
+        local_iter_path = os.path.join(MASTER_SWEEP_DIR, f"report_iterations_pop_{pop_size}.csv")
+        with open(local_iter_path, mode='w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(
+                ['Population_Size', 'Mating_Percentage', 'Least_Iterations', 'Most_Iterations', 'Average_Iterations',
+                 'Std_Dev_Iterations'])
+            writer.writerows(pop_iter_rows)
+
+        # --- LOCAL PLOTS ---
+        # Plot 1: Average Cost Line
         plt.figure(figsize=(10, 6))
         plt.plot(pct_labels, avg_costs, marker='o', linestyle='-', color='b', linewidth=2)
         plt.title(f'Average ITAE Cost vs. Population Mating Pct (Pop: {pop_size})')
@@ -168,7 +221,7 @@ if __name__ == "__main__":
         plt.savefig(os.path.join(MASTER_SWEEP_DIR, 'average_cost_line_plot.png'))
         plt.close()
 
-        # Plot 2: Box Plot WITH Outliers (Cost)
+        # Plot 2: Cost Boxplot (Outliers)
         plt.figure(figsize=(12, 6))
         plt.boxplot(all_bins_costs, tick_labels=pct_labels, showfliers=True)
         plt.title(f'Cost Distribution WITH Outliers (Pop: {pop_size}, {base_config["n_rounds"]} Trials/Bin)')
@@ -179,7 +232,7 @@ if __name__ == "__main__":
         plt.savefig(os.path.join(MASTER_SWEEP_DIR, 'cost_distribution_boxplot_with_outliers.png'))
         plt.close()
 
-        # Plot 3: Box Plot WITHOUT Outliers (Cost)
+        # Plot 3: Cost Boxplot (No Outliers)
         plt.figure(figsize=(12, 6))
         plt.boxplot(all_bins_costs, tick_labels=pct_labels, showfliers=False)
         plt.title(f'Cost Distribution NO Outliers (Pop: {pop_size}, {base_config["n_rounds"]} Trials/Bin)')
@@ -190,10 +243,7 @@ if __name__ == "__main__":
         plt.savefig(os.path.join(MASTER_SWEEP_DIR, 'cost_distribution_boxplot_no_outliers.png'))
         plt.close()
 
-        # ---------------------------
-        #  ITERATION VISUALIZATIONS
-        # ---------------------------
-        # Plot 4: Line Graph (Average Iterations per Bin)
+        # Plot 4: Average Iterations Line
         plt.figure(figsize=(10, 6))
         plt.plot(pct_labels, avg_iters, marker='s', linestyle='-', color='g', linewidth=2)
         plt.title(f'Average Iterations vs. Population Mating Pct (Pop: {pop_size})')
@@ -204,7 +254,7 @@ if __name__ == "__main__":
         plt.savefig(os.path.join(MASTER_SWEEP_DIR, 'average_iterations_line_plot.png'))
         plt.close()
 
-        # Plot 5: Box Plot WITH Outliers (Iterations)
+        # Plot 5: Iterations Boxplot (Outliers)
         plt.figure(figsize=(12, 6))
         plt.boxplot(all_bins_iters, tick_labels=pct_labels, showfliers=True)
         plt.title(f'Iteration Distribution WITH Outliers (Pop: {pop_size}, {base_config["n_rounds"]} Trials/Bin)')
@@ -215,7 +265,7 @@ if __name__ == "__main__":
         plt.savefig(os.path.join(MASTER_SWEEP_DIR, 'iteration_distribution_boxplot_with_outliers.png'))
         plt.close()
 
-        # Plot 6: Box Plot WITHOUT Outliers (Iterations)
+        # Plot 6: Iterations Boxplot (No Outliers)
         plt.figure(figsize=(12, 6))
         plt.boxplot(all_bins_iters, tick_labels=pct_labels, showfliers=False)
         plt.title(f'Iteration Distribution NO Outliers (Pop: {pop_size}, {base_config["n_rounds"]} Trials/Bin)')
@@ -226,67 +276,63 @@ if __name__ == "__main__":
         plt.savefig(os.path.join(MASTER_SWEEP_DIR, 'iteration_distribution_boxplot_no_outliers.png'))
         plt.close()
 
-        # --- GENERATE LOCAL REPORTS FOR THIS POPULATION ---
-
-        # 1. Local Cost Report
-        local_cost_path = os.path.join(MASTER_SWEEP_DIR, f"report_costs_pop_{pop_size}.csv")
-        with open(local_cost_path, mode='w', newline='') as file:
-            writer = csv.writer(file)
-            writer.writerow(
-                ['Population_Size', 'Mating_Percentage', 'Lowest_Cost_Log10_ITAE', 'Highest_Cost_Log10_ITAE',
-                 'Average_Cost_Log10_ITAE', 'Std_Dev_Log10_ITAE'])
-            for data in pop_specific_cost_data:
-                writer.writerow(
-                    [data['Population'], data['Mating_Pct'], data['Min_Cost'], data['Max_Cost'], data['Avg_Cost'],
-                     data['Std_Cost']])
-
-        # 2. Local Iterations Report
-        local_iter_path = os.path.join(MASTER_SWEEP_DIR, f"report_iterations_pop_{pop_size}.csv")
-        with open(local_iter_path, mode='w', newline='') as file:
-            writer = csv.writer(file)
-            writer.writerow(
-                ['Population_Size', 'Mating_Percentage', 'Least_Iterations', 'Most_Iterations', 'Average_Iterations',
-                 'Std_Dev_Iterations'])
-            for data in pop_specific_iter_data:
-                writer.writerow(
-                    [data['Population'], data['Mating_Pct'], data['Min_Iter'], data['Max_Iter'], data['Avg_Iter'],
-                     data['Std_Iter']])
-
-        print(f"-> Local COST report saved to: {local_cost_path}")
-        print(f"-> Local ITERATIONS report saved to: {local_iter_path}")
-
-    # --- 5. FINAL MASTER REPORT GENERATION ---
-    master_cost_report_csv_path = os.path.join(TOP_LEVEL_DIR, "master_mating_cost_report.csv")
-    master_iter_report_csv_path = os.path.join(TOP_LEVEL_DIR, "master_mating_iterations_report.csv")
-
+    # --- 5. GLOBAL MASTER CSV REPORTS (Bulk Write) ---
     print(
         "\n===========================================================================================================")
     print("                                FINAL MATING 2D SWEEP REPORTS")
     print("===========================================================================================================")
 
-    # Write Master Cost CSV
+    master_cost_report_csv_path = os.path.join(TOP_LEVEL_DIR, "master_mating_cost_report.csv")
     with open(master_cost_report_csv_path, mode='w', newline='') as file:
         writer = csv.writer(file)
         writer.writerow(['Population_Size', 'Mating_Percentage', 'Lowest_Cost_Log10_ITAE', 'Highest_Cost_Log10_ITAE',
                          'Average_Cost_Log10_ITAE', 'Std_Dev_Log10_ITAE'])
+        writer.writerows(final_report_cost_data)
 
-        for data in final_report_cost_data:
-            writer.writerow(
-                [data['Population'], data['Mating_Pct'], data['Min_Cost'], data['Max_Cost'], data['Avg_Cost'],
-                 data['Std_Cost']])
-
-    # Write Master Iterations CSV
+    master_iter_report_csv_path = os.path.join(TOP_LEVEL_DIR, "master_mating_iterations_report.csv")
     with open(master_iter_report_csv_path, mode='w', newline='') as file:
         writer = csv.writer(file)
         writer.writerow(
             ['Population_Size', 'Mating_Percentage', 'Least_Iterations', 'Most_Iterations', 'Average_Iterations',
              'Std_Dev_Iterations'])
-        for data in final_report_iter_data:
-            writer.writerow(
-                [data['Population'], data['Mating_Pct'], data['Min_Iter'], data['Max_Iter'], data['Avg_Iter'],
-                 data['Std_Iter']])
+        writer.writerows(final_report_iter_data)
 
     print(f"Global master COST report saved to: ./{master_cost_report_csv_path}")
     print(f"Global master ITERATIONS report saved to: ./{master_iter_report_csv_path}")
-    print(
-        "===========================================================================================================\n")
+
+    # --- 6. TIMING REPORT GENERATION (Bulk Write) ---
+    end_time_sec = time.time()
+    end_datetime = datetime.now()
+    elapsed_seconds = end_time_sec - start_time_sec
+
+    m, s = divmod(elapsed_seconds, 60)
+    h, m = divmod(m, 60)
+    elapsed_formatted = f"{int(h):02d}:{int(m):02d}:{s:05.2f}"
+
+    timestamp_str = start_datetime.strftime('%Y%m%d_%H%M%S')
+
+    total_timing_filename = os.path.join(TOP_LEVEL_DIR, f"execution_timing_total_{timestamp_str}.csv")
+    with open(total_timing_filename, mode='w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow(["Start Time", "End Time", "Elapsed Time (HH:MM:SS)", "Elapsed Time (Seconds)"])
+        writer.writerow([start_datetime.strftime('%Y-%m-%d %H:%M:%S'), end_datetime.strftime('%Y-%m-%d %H:%M:%S'),
+                         elapsed_formatted, round(elapsed_seconds, 2)])
+
+    bin_timing_filename = os.path.join(TOP_LEVEL_DIR, f"execution_timing_bins_{timestamp_str}.csv")
+    with open(bin_timing_filename, mode='w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow(["Population Size", "Mating Percentage", "Elapsed Time (HH:MM:SS)", "Elapsed Time (Seconds)"])
+
+        # Format individual bin timings
+        formatted_timing_rows = []
+        for row in worker_timing_data:
+            w_sec = row[2]
+            wm, ws = divmod(w_sec, 60)
+            wh, wm = divmod(wm, 60)
+            w_formatted = f"{int(wh):02d}:{int(wm):02d}:{ws:05.2f}"
+            formatted_timing_rows.append([row[0], row[1], w_formatted, round(w_sec, 2)])
+
+        writer.writerows(formatted_timing_rows)
+
+    print(f"\n--- EXECUTION FINISHED: {end_datetime.strftime('%Y-%m-%d %H:%M:%S')} ---")
+    print(f"Total Time Elapsed: {elapsed_formatted} ({elapsed_seconds:.2f} pure seconds)\n")

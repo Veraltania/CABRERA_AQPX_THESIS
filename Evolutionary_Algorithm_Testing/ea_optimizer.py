@@ -1,78 +1,10 @@
 import csv
 from pathlib import Path
 from abc import ABC, abstractmethod
-from numba import njit
+from Evolutionary_Algorithm_Testing.solver_engine import fast_itae_diffeq
 
 # Assuming your custom local modules are accessible
 from Transfer_Function_Analysis.analyze_transfer_func_stability import *
-
-
-# --- HIGH-SPEED NUMBA FITNESS FUNCTION ---
-@njit
-def fast_itae_numba(Kp, Ki, K_plant, T_plant, delay):
-    """
-    Blazing fast discrete simulation for any First-Order Plus Dead Time (FOPDT) system.
-    G(s) = K_plant / (T_plant*s + 1) * e^(-delay*s)
-    Now utilizing highly stable RK4 integration.
-    """
-    t_end = 10000.0
-    steps = 1000
-    dt = t_end / steps
-
-    delay_steps = int(delay / dt)
-    u_history = np.zeros(delay_steps + 1)
-    buffer_idx = 0
-
-    y = 0.0
-    integral_e = 0.0
-    itae = 0.0
-    setpoint = 1.0
-
-    max_y = -1e9
-    min_y = 1e9
-
-    for i in range(steps):
-        t = i * dt
-        error = setpoint - y
-
-        # ITAE calculation
-        itae += t * abs(error) * dt
-
-        # PI Controller
-        integral_e += error * dt
-        u = (Kp * error) + (Ki * integral_e)
-
-        # Delay Buffer Management
-        u_history[buffer_idx] = u
-        delayed_idx = (buffer_idx + 1) % len(u_history)
-        u_delayed = u_history[delayed_idx]
-
-        # ---------------------------------------------------------
-        # Plant Dynamics (Runge-Kutta 4th Order Integration)
-        # ---------------------------------------------------------
-        k1 = (K_plant * u_delayed - y) / T_plant
-        k2 = (K_plant * u_delayed - (y + 0.5 * dt * k1)) / T_plant
-        k3 = (K_plant * u_delayed - (y + 0.5 * dt * k2)) / T_plant
-        k4 = (K_plant * u_delayed - (y + dt * k3)) / T_plant
-
-        y += (dt / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
-        # ---------------------------------------------------------
-
-        # Early exit if y explodes to save computation time
-        if abs(y) > 1e6:
-            return 9.0
-
-            # Track limits for constraints
-        if y > max_y: max_y = y
-        if y < min_y: min_y = y
-
-        buffer_idx = delayed_idx
-
-    # Apply standard constraints
-    if max_y > 1.2 or min_y < -0.2:
-        itae += 1e9
-
-    return np.log10(max(itae, 1e-12))
 
 class EvolutionaryOptimizer(ABC):
     def __init__(self, config, tf_params):
@@ -133,12 +65,8 @@ class EvolutionaryOptimizer(ABC):
 
     def calculate_itae_cost(self, Kp, Ki):
         try:
-            return fast_itae_numba(
-                Kp,
-                Ki,
-                self.K_plant,
-                self.T_plant,
-                self.delay
+            return fast_itae_diffeq(
+                Kp, Ki, self.K_plant, self.T_plant, self.delay
             )
         except Exception as e:
             print(f"Cost calculation failed: {e}")
@@ -209,7 +137,7 @@ class EvolutionaryOptimizer(ABC):
             with open(csv_file, mode='a', newline='') as file:
                 csv.writer(file).writerow([current_round, iterations_run, cost, best_Kp, best_Ki])
 
-            self.save_plots(current_round, cost_history, best_Kp, best_Ki)
+            # self.save_plots(current_round, cost_history, best_Kp, best_Ki)
 
         self._print_and_save_summary()
 
