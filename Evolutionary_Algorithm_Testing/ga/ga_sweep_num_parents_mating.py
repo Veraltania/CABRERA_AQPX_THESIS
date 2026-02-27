@@ -13,6 +13,9 @@ import matplotlib.pyplot as plt
 
 from Evolutionary_Algorithm_Testing.ga.ga_optimizer import GAOptimizer
 
+# --- IMPORT STABILITY TOOLS FOR PRE-COMPUTATION ---
+from Transfer_Function_Analysis.analyze_transfer_func_stability import define_transfer_func, define_guardrail_gain
+
 
 # --- WORKER FUNCTION FOR MULTIPROCESSING ---
 # Note: This must be defined at the top level so it can be pickled by multiprocessing
@@ -89,6 +92,26 @@ if __name__ == "__main__":
         'tf_n_pade': 2
     }
 
+    # --- PRE-COMPUTE STABILITY ONCE ---
+    print("\n--- PRE-COMPUTING SYSTEM STABILITY ---")
+    extracted_delay = tf_params.get('tf_delay', 0.0)
+    computed_delay = 1.0 if extracted_delay == 0.0 else extracted_delay
+    is_reverse_acting = tf_params['tf_num'][0] < 0
+
+    temp_plant = define_transfer_func(
+        tf_params['tf_num'],
+        tf_params['tf_den'],
+        computed_delay,
+        tf_params.get('tf_n_pade', 2)
+    )
+    max_kp = define_guardrail_gain(temp_plant, find_negative_gain=is_reverse_acting)
+
+    # Append to params so workers don't have to calculate it inside the loop
+    tf_params['computed_delay'] = computed_delay
+    tf_params['is_reverse_acting'] = is_reverse_acting
+    tf_params['max_kp'] = float(max_kp) if max_kp is not None else None
+    print(f"Computed Bounds -> Max Kp: {tf_params['max_kp']} | Reverse Acting: {is_reverse_acting}\n")
+
     base_config = {
         'patience_limit': 25,
         'max_iters': 200,
@@ -99,7 +122,7 @@ if __name__ == "__main__":
     population_sizes = [20, 40, 60, 80, 100]
     start_pct = 0.1
     end_pct = 1.00
-    num_bins = 10
+    num_bins = 20
     parent_mating_pct_bins = np.linspace(start_pct, end_pct, num_bins)
 
     TOP_LEVEL_DIR = "ga_sweep_results_mating-percentage_tf3_tds_test"

@@ -1,62 +1,49 @@
 import csv
 from pathlib import Path
 from abc import ABC, abstractmethod
+import numpy as np
+import control as ct
+
 from Evolutionary_Algorithm_Testing.solver_engine import fast_itae_diffeq
 
-# Assuming your custom local modules are accessible
-from Transfer_Function_Analysis.analyze_transfer_func_stability import *
 
 class EvolutionaryOptimizer(ABC):
     def __init__(self, config, tf_params):
         """Initializes the generic optimizer and sets up the environment."""
-
-        # 1. Auto-Detect Algorithm Name (e.g., "DEOptimizer" -> "DE")
         self.algo_name = self.__class__.__name__.replace('Optimizer', '')
 
-        # 2. Extract Base Configurations
+        # Base Configurations
         self.pop_size = config.get('population_size', 100)
         self.patience = config.get('patience_limit', 25)
         self.max_iters = config.get('max_iters', 200)
         self.tol = config.get('improvement_tol', 1.0)
         self.n_rounds = config.get('n_rounds', 50)
 
-        # 3. Auto-Generate Output Directory Name
         folder_name = config.get(
             'output_folder',
             f"experiment_images_{self.algo_name.lower()}_population_{self.pop_size}"
         )
         self.output_dir = self.setup_experiment_dir(folder_name)
 
-        # --- EXTRACT RAW PARAMS FOR NUMBA ---
+        # Raw params for Numba solver
         self.K_plant = tf_params['tf_num'][0]
         self.T_plant = tf_params['tf_den'][0]
+        self.delay = tf_params.get('computed_delay', 0.5)
 
-        # --- DELAY OVERRIDE LOGIC ---
-        extracted_delay = tf_params.get('tf_delay', 0.0)
-        if extracted_delay == 0.0:
-            print("   [!] System delay is 0.0. Overriding to 0.5s to allow mathematical stability bounding.")
-            self.delay = 1
-        else:
-            self.delay = extracted_delay
+        # Pre-computed bounds and flags (Passed in, NOT calculated here)
+        self.is_reverse_acting = tf_params.get('is_reverse_acting', self.K_plant < 0)
+        self.max_kp = tf_params.get('max_kp', None)
 
-        # Determine if we need a negative gain guardrail
-        self.is_reverse_acting = self.K_plant < 0
+        # Store raw TF params in case we need to build the plant lazily later
+        self._raw_tf_params = tf_params
+        self._lazy_plant = None
 
-        # 4. Define Plant and Constraints (Using self.delay instead of the raw dictionary value)
-        self.plant = define_transfer_func(
-            tf_params['tf_num'],
-            tf_params['tf_den'],
-            self.delay,
-            tf_params.get('tf_n_pade', 2)
-        )
-
-        # Pass the flag to the guardrail function
-        self.max_kp = define_guardrail_gain(self.plant, find_negative_gain=self.is_reverse_acting)
-
-        # 5. History Tracking for Summaries
+        # History Tracking
         self.agg_history = {'iterations': [], 'costs': [], 'kp': [], 'ki': []}
 
-    # -- Shared Helper Methods --
+        # --- MEMOIZATION CACHE ---
+        # Persists across all rounds for this specific optimizer instance
+        self.memo_cache = {}
 
     def setup_experiment_dir(self, folder_name):
         output_dir = Path(folder_name)
@@ -64,29 +51,47 @@ class EvolutionaryOptimizer(ABC):
         return output_dir
 
     def calculate_itae_cost(self, Kp, Ki):
+        # 1. Fast-Fail Boundary Check
+        if (self.is_reverse_acting and Kp > 0) or (not self.is_reverse_acting and Kp < 0):
+            return 1e9  # Wrong sign, instantly penalize
+
+        # 2. Fuzzy Memoization (Round to 5 decimal places to group micro-mutations)
+        cache_key = (round(float(Kp), 5), round(float(Ki), 5))
+        if cache_key in self.memo_cache:
+            return self.memo_cache[cache_key]
+
+        # 3. Compute and Cache
         try:
-            return fast_itae_diffeq(
-                Kp, Ki, self.K_plant, self.T_plant, self.delay
-            )
+            cost = fast_itae_diffeq(Kp, Ki, self.K_plant, self.T_plant, self.delay)
+            self.memo_cache[cache_key] = cost
+            return cost
         except Exception as e:
             print(f"Cost calculation failed: {e}")
             return np.log10(1e9)
 
-    # --- Refactored ea_optimizer.py snippets ---
+    @property
+    def plant(self):
+        """Lazy evaluation: Only build the control system plant if requested (e.g. for plotting)"""
+        if self._lazy_plant is None:
+            # Recreate it locally using standard control tools if needed for simulate_response
+            num, den = ct.pade(self.delay, self._raw_tf_params.get('tf_n_pade', 2))
+            pade_delay = ct.TransferFunction(num, den)
+            base_tf = ct.TransferFunction(self._raw_tf_params['tf_num'], self._raw_tf_params['tf_den'])
+            self._lazy_plant = base_tf * pade_delay
+        return self._lazy_plant
 
     def simulate_response(self, Kp, Ki, amplitude=1.0):
-        """Simulates response with a custom step amplitude."""
         ctrl = ct.TransferFunction([Kp, Ki], [1, 0])
         try:
-            # The closed-loop system
             sys = ct.feedback(self.plant * ctrl, 1)
             T_sim = np.linspace(0, 10000, 1000)
-
-            # Multiply the unit step response by the desired amplitude
             T, y = ct.step_response(sys, T_sim)
             return T, y * amplitude
         except:
             return None, None
+
+    # [Remaining methods: save_plots, run_experiment, _print_and_save_summary remain exactly the same]
+    # ...
 
     def save_plots(self, round_num, history, best_Kp, best_Ki):
         # Determine step direction based on plant gain

@@ -4,18 +4,14 @@ from Evolutionary_Algorithm_Testing.ea_optimizer import EvolutionaryOptimizer
 
 class GAOptimizer(EvolutionaryOptimizer):
     def __init__(self, config, tf_params):
-        # 1. Initialize the base class to get self.pop_size, self.max_iters, etc.
         super().__init__(config, tf_params)
 
-        # 2. Extract GA-specific configurations strictly from the user's config
         self.num_parents_mating = config.get('num_parents_mating', 10)
         self.parent_selection_type = config.get('parent_selection_type', "rank")
         self.keep_elitism = config.get('keep_elitism', 2)
-
         self.crossover_type = config.get('crossover_type', "scattered")
         self.mutation_type = config.get('mutation_type', "adaptive")
 
-        # 3. Handle mutation parameters based on the mutation type chosen
         if self.mutation_type == "adaptive":
             self.mutation_probability = config.get('mutation_probability', [0.25, 0.05])
         else:
@@ -43,8 +39,9 @@ class GAOptimizer(EvolutionaryOptimizer):
                     else:
                         self.counter += 1
 
-                print(
-                    f"   Gen {len(self.history)}: Cost={cost:.2f} (Best={self.best_cost:.2f}) | Patience: {self.counter}/{self.patience}")
+                gen_num = len(self.history)
+                if gen_num % 25 == 0 or self.counter >= self.patience:
+                    print(f"   Gen {gen_num}: Best={self.best_cost:.2f} | P: {self.counter}/{self.patience}")
 
                 if self.counter >= self.patience:
                     print(f"   --> Stopping Early: No improvement for {self.patience} generations.")
@@ -59,26 +56,21 @@ class GAOptimizer(EvolutionaryOptimizer):
 
         tracker = Tracker(self.patience, self.tol, cost_wrapper)
 
-        # --- DYNAMIC BOUNDS BASED ON PLANT DIRECTION ---
-        is_reverse = getattr(self, 'is_reverse_acting', False)
-
         if self.max_kp is None:
-            safe_limit = -100.0 if is_reverse else 100.0
+            safe_limit = -100.0 if self.is_reverse_acting else 100.0
             print(f"   [!] No stability crossing found. Using fallback Kp boundary: {safe_limit}")
         else:
             safe_limit = float(self.max_kp)
 
-        if is_reverse:
+        if self.is_reverse_acting:
             min_kp, max_kp = safe_limit, -0.001
             min_ki, max_ki = -0.01, -0.0001
         else:
             min_kp, max_kp = 0.001, safe_limit
             min_ki, max_ki = 0.0001, 0.01
 
-        # Format bounds for PyGAD (List of dicts)
         bounds = [{'low': min_kp, 'high': max_kp}, {'low': min_ki, 'high': max_ki}]
 
-        # 4. Construct the PyGAD arguments dynamically
         ga_kwargs = {
             "num_generations": self.max_iters,
             "num_parents_mating": self.num_parents_mating,
@@ -94,16 +86,14 @@ class GAOptimizer(EvolutionaryOptimizer):
             "suppress_warnings": True
         }
 
-        # Apply specific mutation setting depending on the chosen mutation type
         if self.mutation_type == "adaptive":
             ga_kwargs["mutation_probability"] = self.mutation_probability
         else:
             ga_kwargs["mutation_percent_genes"] = self.mutation_percent_genes
 
-        # Instantiate GA with unpacked dictionary
         ga_instance = pygad.GA(**ga_kwargs)
-
         ga_instance.run()
+
         solution, _, _ = ga_instance.best_solution()
         final_cost = cost_wrapper(solution)
 
