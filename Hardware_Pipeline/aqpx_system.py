@@ -26,6 +26,8 @@ class ParameterController(ABC):
         # State Variables
         self.integral_sum = 0.0
         self.last_error = 0.0
+        self.max_out = 1.0
+        self.min_out = 0.0
         
         # Watchdog Variables (10-minute window = 600 seconds)
         self.window_duration = 600.0  
@@ -127,10 +129,27 @@ class ParameterController(ABC):
         
         # Standard PI Calculation
         p_term = self.kp * error
+
         self.integral_sum += (error * self.dt)
         i_term = self.ki * self.integral_sum
-        pi_output = p_term + i_term
-        
+        pi_output_unclamped = p_term + i_term
+
+        # anti-windup logic
+        # prevent controller from asking for percentages of power higher than 100%
+        if(pi_output_unclamped > self.max_out):
+            pi_output_unclamped = self.max_out
+            if(error < 0):
+                self.integral_sum += (error * self.dt)
+        # prevent controller from asking for negative percentages of power
+        elif(pi_output_unclamped < self.min_out):
+            pi_output_unclamped = self.min_out
+            if(error > 0):
+                self.integral_sum += (error * self.dt)
+        else:
+            self.integral_sum += (error * self.dt)
+            
+        pi_output = pi_output_unclamped
+            
         self.last_error = error
         self._log_current_state(current_val, error, pi_output)
         
