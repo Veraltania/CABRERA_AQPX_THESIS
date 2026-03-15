@@ -45,62 +45,44 @@ class AquaponicsSystem:
             sys.exit(0)
 
 if __name__ == '__main__':
-    # ---------------------------------------------------------
-    # 1. Define DO Schedule (Daily Recurring Windows)
-    # ---------------------------------------------------------
-    do_morning_schedule = DailyTimeSchedule(datetime.time(8, 0, 0), datetime.time(10, 0, 0))
-    do_midday_schedule = DailyTimeSchedule(datetime.time(10, 0, 1), datetime.time(12, 0, 0))
 
-    do_morning = DOController(
-        name="DO-Morning-Static", 
-        strategy=StaticTuningStrategy(),
-        schedule=do_morning_schedule
-    )
-    
-    do_midday = DOController(
-        name="DO-Midday-Adaptive", 
-        strategy=AdaptiveTuningStrategy(),
-        schedule=do_midday_schedule
-    )
+    do_controller_configs = [
+        ("DO-Day-Adaptive", AdaptiveTuningStrategy(),   datetime.time(0, 0, 0),  datetime.time(5, 59, 59)),
+        ("DO-Day-Fixed", StaticTuningStrategy(), datetime.time(6, 0, 0),  datetime.time(11, 59, 59)),
+        ("DO-Evening-Adaptive",   AdaptiveTuningStrategy(),   datetime.time(12, 0, 0), datetime.time(17, 59, 59)),
+        ("DO-Evening-Fixed",  StaticTuningStrategy(),   datetime.time(18, 0, 0), datetime.time(23, 59, 59)),
+    ]
 
-    # ---------------------------------------------------------
-    # 2. Define TDS Schedule (Multi-Day Continuous Windows)
-    # ---------------------------------------------------------
-    # Example: Day 1 and 2 static, Day 3 and 4 adaptive
-    now = datetime.datetime.now()
-    
-    # 0 to 48 hours from now
-    tds_static_dates = MultiDaySchedule(
-        start_datetime=now, 
-        end_datetime=now + datetime.timedelta(days=2)
-    )
-    
-    # 48 to 96 hours from now
-    tds_adaptive_dates = MultiDaySchedule(
-        start_datetime=now + datetime.timedelta(days=2, seconds=1), 
-        end_datetime=now + datetime.timedelta(days=4)
-    )
+    tds_controller_configs = [
+        ("TDS-Day-Adaptive", AdaptiveTuningStrategy(),   datetime.time(0, 0, 0),  datetime.time(5, 59, 59)),
+        ("TDS-Day-Fixed", StaticTuningStrategy(), datetime.time(6, 0, 0),  datetime.time(11, 59, 59)),
+        ("TDS-Evening-Adaptive",   AdaptiveTuningStrategy(),   datetime.time(12, 0, 0), datetime.time(17, 59, 59)),
+        ("TDS-Evening-Fixed",  StaticTuningStrategy(),   datetime.time(18, 0, 0), datetime.time(23, 59, 59)),
+    ]
 
-    tds_static = TDSController(
-        name="TDS-Day1to2-Static", 
-        strategy=StaticTuningStrategy(),
-        schedule=tds_static_dates
-    )
-    
-    tds_adaptive = TDSController(
-        name="TDS-Day3to4-Adaptive", 
-        strategy=AdaptiveTuningStrategy(),
-        schedule=tds_adaptive_dates
-    )
-    
-    # Group them into a list
-    active_controllers = [do_morning, do_midday, tds_static, tds_adaptive]
-    
+    # 2. Generate the controllers dynamically
+    active_controllers = []
+    for name, strategy, start, end in do_controller_configs:
+        controller = DOController(
+            name=name,
+            strategy=strategy,
+            schedule=DailyTimeSchedule(start, end)
+        )
+        active_controllers.append(controller)
+
+    for name, strategy, start, end in tds_controller_configs:
+        controller = TDSController(
+            name=name,
+            strategy=strategy,
+            schedule=DailyTimeSchedule(start, end)
+        )
+        active_controllers.append(controller)
+        
     # Inject the list into the System
     system = AquaponicsSystem(
         controllers=active_controllers, 
         broker="localhost", 
         port=1883
     )
-    
-    # system.run()
+        
+    system.run()
