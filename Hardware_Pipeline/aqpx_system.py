@@ -36,9 +36,9 @@ class ParameterController(ABC):
         self._load_previous_state()
 
     def _load_previous_state(self):
-        """Reloads state, including watchdog baseline."""
+        """Reads the CSV file and reloads ONLY the tuning parameters and PI state."""
         if not os.path.exists(self.log_file):
-            print(f"[{self.name}] No existing state file found.")
+            print(f"[{self.name}] No existing state file found. Starting fresh.")
             return
 
         try:
@@ -49,22 +49,18 @@ class ParameterController(ABC):
                     last_row = row 
                 
                 if last_row:
+                    # 1. Reload PI State (so it doesn't forget its integral sum)
                     self.integral_sum = float(last_row.get('integral_sum', 0.0))
                     self.last_error = float(last_row.get('error', 0.0))
                     
-                    # Reload tuning
+                    # 2. Reload Adaptive Parameters (so it remembers the EA tuning)
                     self.kp = float(last_row.get('kp', self.kp))
                     self.ki = float(last_row.get('ki', self.ki))
                     self.foptd_gain = float(last_row.get('foptd_gain', self.foptd_gain))
                     self.foptd_tau = float(last_row.get('foptd_tau', self.foptd_tau))
                     self.foptd_delay = float(last_row.get('foptd_delay', self.foptd_delay))
                     
-                    # Reload watchdog state
-                    self.itae_previous_window = float(last_row.get('itae_previous_window', 0.0))
-                    self.itae_current_window = float(last_row.get('itae_current_window', 0.0))
-                    self.window_timer = float(last_row.get('window_timer', 0.0))
-                    
-                    print(f"[{self.name}] Resumed successfully! Kp: {self.kp:.3f} | Baseline ITAE: {self.itae_previous_window:.2f}")
+                    print(f"[{self.name}] Resumed. Kp: {self.kp:.3f}. Ki: {self.ki:.3f} | Watchdog timer reset to 0.")
         except Exception as e:
             print(f"[{self.name}] Error reading state file: {e}. Starting fresh.")
 
@@ -167,8 +163,6 @@ class DOController(ParameterController):
                         init_tau = 1.0,
                         init_delay = 0.5
                         )
-        # Define DO-specific targets, PID constants (Kp, Ki, Kd), etc.
-        self.target_do = 5.0 
 
     def process(self, data):
         # Safely extract DO from the incoming payload
@@ -195,14 +189,12 @@ class TDSController(ParameterController):
         current_tds = data.get('mcp_wq', {}).get('tds')
         if current_tds is not None:
             pi_output = self.calculate_pi(current_tds)
-            print(f"[{self.name} Controller] Current TDS: {current_tds} | Target: {self.target_tds}")
+            print(f"[{self.name}] TDS: {current_tds} | Target: {self.target} | Control Signal: {pi_output:.2f}")
         else:
             print(f"[{self.name} Controller] No TDS data found in payload.")
 
-
-# 
 class AquaponicsSystem:
-    """The Middleman: Now routing data to dedicated controllers."""
+    """Routes data to dedicated controllers."""
     
     def __init__(self, broker="localhost", port=1883):
         self.broker = broker
@@ -243,5 +235,5 @@ class AquaponicsSystem:
             sys.exit(0)
 
 if __name__ == '__main__':
-    system = AquaponicsSystem()
+    system = AquaponicsSystem(broker="localhost", port=1883)
     system.run()
