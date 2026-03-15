@@ -1,14 +1,11 @@
-import paho.mqtt.client as mqtt
 import time
 import sys
-import csv
-import os
-import json
-from datetime import datetime
+from Hardware_Pipeline.aqpx_controller import AqpxController
+from Hardware_Pipeline.aqpx_logger import AqpxLogger
 
-# NOTE: Ensure the previously defined AqpxLogger class is included in this file 
-# or imported properly before running this snippet.
-
+class AquaponicsSystem:
+    """The Middleman: Currently configured in Log-Only mode for testing."""
+    
 class AquaponicsSystem:
     """The Middleman: Currently configured in Log-Only mode for testing."""
     
@@ -16,7 +13,9 @@ class AquaponicsSystem:
         self.broker = broker
         self.port = port
         
-        # We only instantiate the logger for this testing phase
+        # 1. ADD A VARIABLE TO HOLD THE LATEST STATE
+        self.latest_sensor_data = {} 
+        
         self.logger = AqpxLogger(
             broker=self.broker, 
             port=self.port, 
@@ -26,14 +25,12 @@ class AquaponicsSystem:
     def process_sensor_data(self, data):
         """
         Triggered automatically every time the Logger receives new JSON.
-        PID logic is removed for testing. We just print to verify data flow.
         """
-        print(f"\n[System] New sensor data safely routed to the Middleman!")
+        self.latest_sensor_data = data 
         
-        # Using .get() to safely grab a few values to prove it's parsing correctly
+        print(f"\n[System] New sensor data safely routed to the Middleman!")
         current_ph = data.get('mcp_wq', {}).get('ph', 'N/A')
         current_temp = data.get('mcp_wq', {}).get('temp', 'N/A')
-        
         print(f"[System - Test Output] pH: {current_ph} | Temp: {current_temp}")
         
 

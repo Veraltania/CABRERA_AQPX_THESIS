@@ -1,6 +1,4 @@
 import paho.mqtt.client as mqtt
-import time
-import sys
 import csv
 import os
 import json
@@ -29,7 +27,7 @@ class AqpxLogger:
         
         self.on_data_received_callback = on_data_received_callback 
         
-        self.client = mqtt.Client(client_id="rpi_logger_main")
+        self.client = mqtt.Client(client_id="rpi_logger_aqpx-neo")
         self.client.on_connect = self._on_connect
         self.client.on_message = self._on_message
 
@@ -67,6 +65,8 @@ class AqpxLogger:
     def _process_summary_json(self, payload):
         try:
             data = json.loads(payload)
+
+            print(f"[Logger] Received Summary Data: {json.dumps(data, indent=2)}")
 
             if self.on_data_received_callback:
                 self.on_data_received_callback(data)

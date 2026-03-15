@@ -1,10 +1,4 @@
 import paho.mqtt.client as mqtt
-import time
-import sys
-import csv
-import os
-import json
-from datetime import datetime
 
 class AqpxController:
     """Handles sending commands to the aquaponics hardware."""
@@ -53,9 +47,3 @@ class AqpxController:
             print(f"[Controller] Sent '{command_payload}' to '{self.topic}'")
         else:
             print(f"[Controller] Failed to send. Status: {status}")
-
-if __name__ == '__main__':
-    # You can now easily change the broker/port right here without touching the classes.
-    # For example: system = AquaponicsSystem(broker="192.168.1.100", port=1883)
-    system = AquaponicsSystem()
-    system.run()
