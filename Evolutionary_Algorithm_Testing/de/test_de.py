@@ -239,8 +239,8 @@ if __name__ == "__main__":
         output_folder="experiment_images_de_population_100",
 
         # Transfer Function
-        tf_num=[44.93],
-        tf_den=[1474.32, 1],
-        tf_delay=343.93,
+        tf_num=[-24.44],
+        tf_den=[84487.79, 1],
+        tf_delay=0.5,
         tf_n_pade=2
     )
