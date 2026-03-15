@@ -23,7 +23,8 @@ function dde_system(du, u, h, p, t)
     past_y = past[1]
     past_int_e = past[2]
 
-    u_delayed = Kp_c * (1.0 - past_y) + Ki_c * past_int_e
+    past_setpoint = (t - tau) >= 0.0 ? 1.0 : 0.0
+    u_delayed = Kp_c * (past_setpoint - past_y) + Ki_c * past_int_e
 
     du[1] = (K_p * u_delayed - y) / T_p  
     du[2] = 1.0 - y                      
@@ -46,9 +47,7 @@ function run_dde_solver(Kp_ctrl, Ki_ctrl, K_plant, T_plant, delay)
             prob,
             MethodOfSteps(Tsit5()),
             saveat=10.0,
-            maxiters=5000,
             dtmin=1e-3,
-            force_dtmin=true,
             abstol=1e-3,
             reltol=1e-3
         )
