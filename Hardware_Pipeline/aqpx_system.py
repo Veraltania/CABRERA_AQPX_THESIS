@@ -60,7 +60,7 @@ if __name__ == '__main__':
         ("TDS-Evening-Fixed",  StaticTuningStrategy(),   datetime.time(18, 0, 0), datetime.time(23, 59, 59)),
     ]
 
-    # 2. Generate the controllers dynamically
+    # Generate the controllers dynamically
     active_controllers = []
     for name, strategy, start, end in do_controller_configs:
         controller = DOController(
@@ -78,7 +78,7 @@ if __name__ == '__main__':
         )
         active_controllers.append(controller)
         
-    # Inject the list into the System
+    # Inject the list into the system
     system = AquaponicsSystem(
         controllers=active_controllers, 
         broker="localhost", 
