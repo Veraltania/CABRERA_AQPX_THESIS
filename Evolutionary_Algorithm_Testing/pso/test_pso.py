@@ -5,8 +5,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 import control as ct
 
+# Import the Julia-based fast solver engine
+from Evolutionary_Algorithm_Testing.solver_engine import fast_fbest_diffeq
+
 # Assuming these are custom local modules
 from Transfer_Function_Analysis.analyze_transfer_func_stability import *
+
 
 # --- 1. CUSTOM EXCEPTION ---
 class EarlyStopping(Exception):
@@ -15,21 +19,23 @@ class EarlyStopping(Exception):
 
 
 # --- 2. HELPER FUNCTIONS ---
-def simulate_response(Kp, Ki, plant):
-    """Simulates the step response for a specific set of gains."""
-    ctrl = ct.TransferFunction([Kp, Ki], [1, 0])
+def simulate_response(Kp, Ki, K_plant, T_plant, delay):
+    """Simulates the step response using the Julia DDE solver."""
     try:
-        sys = ct.feedback(plant * ctrl, 1)
-        T_sim = np.linspace(0, 10000, 1000)
-        T_sim, y_sim = ct.step_response(sys, T_sim)
-        return T_sim, y_sim
+        # We pass arbitrary weights (1.0, 0.05, 1.0) because we only need the arrays here
+        _, _, _, y_vals, t_vals = jl.run_dde_solver(Kp, Ki, K_plant, T_plant, delay, 1.0, 0.05, 1.0)
+
+        if len(y_vals) == 0:
+            return None, None
+
+        return np.array(t_vals), np.array(y_vals)
     except:
         return None, None
 
 
-def objective_function(particles, plant, state, patience_limit, improvement_tol):
+def objective_function(particles, K_plant, T_plant, delay, state, patience_limit, improvement_tol):
     """
-    Calculates costs for the swarm and handles patience/early stopping.
+    Calculates costs for the swarm using the Julia solver and handles patience/early stopping.
     State is a mutable dictionary passed via kwargs to maintain history across iterations.
     """
     n_particles = particles.shape[0]
@@ -43,20 +49,9 @@ def objective_function(particles, plant, state, patience_limit, improvement_tol)
             continue
 
         try:
-            controller = ct.TransferFunction([Kp, Ki], [1, 0])
-            closed_loop = ct.feedback(plant * controller, 1)
-            T = np.linspace(0, 10000, 1000)
-            T, y = ct.step_response(closed_loop, T)
-
-            e = 1.0 - y
-            dt = T[1] - T[0]
-            itae = np.sum(T * np.abs(e)) * dt
-
-            # Penalty for overshoot/undershoot
-            if np.max(y) > 1.2 or np.min(y) < -0.2:
-                itae += 1e9
-
-            costs.append(itae if not (np.isnan(itae) or np.isinf(itae)) else 1e9)
+            # Evaluate using compiled DelayDiffEq engine
+            cost = fast_fbest_diffeq(Kp, Ki, K_plant, T_plant, delay)
+            costs.append(cost if not (np.isnan(cost) or np.isinf(cost)) else 1e9)
         except:
             costs.append(1e9)
 
@@ -82,7 +77,7 @@ def objective_function(particles, plant, state, patience_limit, improvement_tol)
 
     # 3. Logging
     print(f"   [Round {state['current_round']}] Gen {state['iter_count']}: "
-          f"Best={state['best_global_cost']:.2f} | "
+          f"Best={state['best_global_cost']:.4f} | "
           f"Patience: {state['patience_counter']}/{patience_limit}")
 
     # 4. Check Termination
@@ -99,7 +94,7 @@ def setup_experiment_dir(folder_name):
     return output_dir
 
 
-def save_plots(output_dir, round_num, history, best_Kp, best_Ki, plant):
+def save_plots(output_dir, round_num, history, best_Kp, best_Ki, K_plant, T_plant, delay):
     """Generates and saves the convergence and response plots."""
     # Convergence Plot
     plt.figure(figsize=(10, 4))
@@ -110,7 +105,7 @@ def save_plots(output_dir, round_num, history, best_Kp, best_Ki, plant):
     plt.close()
 
     # Step Response Plot
-    T_best, y_best = simulate_response(best_Kp, best_Ki, plant)
+    T_best, y_best = simulate_response(best_Kp, best_Ki, K_plant, T_plant, delay)
     plt.figure(figsize=(10, 6))
     if T_best is not None:
         plt.plot(T_best, y_best, 'g-', label='Best Params')
@@ -127,7 +122,7 @@ def run_pso_experiment(
         population_size=100,
         patience_limit=25,
         max_iters=200,
-        improvement_tol=1.0,
+        improvement_tol=0.01,  # Lowered for log-scaled engine output
         n_rounds=50,
         output_folder="experiment_images_pso",
         # Transfer Function Params
@@ -149,11 +144,16 @@ def run_pso_experiment(
     if not csv_filename.exists():
         with open(csv_filename, mode='w', newline='') as file:
             writer = csv.writer(file)
-            writer.writerow(['Round', 'Iterations_Run', 'Final_Cost_ITAE', 'Best_Kp', 'Best_Ki'])
+            writer.writerow(['Round', 'Iterations_Run', 'Final_Cost_Log10', 'Best_Kp', 'Best_Ki'])
 
-    # 2. Define Plant
-    plant = define_transfer_func(tf_num, tf_den, tf_delay, tf_n_pade)
-    max_kp_guardrail = define_guardrail_gain(plant)
+    # 2. Define Plant & Extract properties for Julia
+    K_plant = tf_num[0]
+    T_plant = tf_den[0]
+    delay = tf_delay
+
+    # Preserve the control-library plant just for guardrail gain calculations
+    plant_ct = define_transfer_func(tf_num, tf_den, tf_delay, tf_n_pade)
+    max_kp_guardrail = define_guardrail_gain(plant_ct)
 
     # 3. Initialize Aggregate History
     agg_history = {
@@ -166,7 +166,6 @@ def run_pso_experiment(
         print(f"\n{'=' * 40}\nSTARTING PSO ROUND {current_round} OF {n_rounds}\n{'=' * 40}")
 
         # Reset State for this round
-        # We use a dictionary to pass mutable state to the objective function
         run_state = {
             'best_global_cost': float('inf'),
             'patience_counter': 0,
@@ -183,13 +182,14 @@ def run_pso_experiment(
         # Run Optimization
         cost, pos = float('inf'), [0, 0]
         try:
-            # We pass extra arguments (kwargs) that flow into objective_function
+            # Extra arguments passed here flow to objective_function
             cost, pos = optimizer.optimize(
                 objective_function,
                 iters=max_iters,
                 verbose=False,
-                # kwargs below:
-                plant=plant,
+                K_plant=K_plant,
+                T_plant=T_plant,
+                delay=delay,
                 state=run_state,
                 patience_limit=patience_limit,
                 improvement_tol=improvement_tol
@@ -216,13 +216,13 @@ def run_pso_experiment(
             csv.writer(file).writerow([current_round, iterations_run, cost, best_Kp, best_Ki])
 
         # Save Plots
-        save_plots(output_dir, current_round, run_state['history'], best_Kp, best_Ki, plant)
+        save_plots(output_dir, current_round, run_state['history'], best_Kp, best_Ki, K_plant, T_plant, delay)
 
     # 5. Final Summary
     summary_text = (
         f"--- PSO EXPERIMENT SUMMARY ---\n"
         f"Total Rounds: {n_rounds}\n"
-        f"Average ITAE Cost: {np.mean(agg_history['costs']):.2f}\n"
+        f"Average Cost (Log10 F_best): {np.mean(agg_history['costs']):.4f}\n"
         f"Kp: {np.mean(agg_history['kp']):.5f} (+/- {np.std(agg_history['kp']):.5f})\n"
         f"Ki: {np.mean(agg_history['ki']):.6f} (+/- {np.std(agg_history['ki']):.6f})\n"
     )
@@ -239,13 +239,12 @@ if __name__ == "__main__":
         population_size=100,
         patience_limit=25,
         max_iters=200,
-        improvement_tol=1.0,
+        improvement_tol=0.01,  # Adjusted for log10(F_best)
         n_rounds=50,
         output_folder="experiment_images_pso_population_100",
 
-        # Transfer Function
-        tf_num=[44.93],
-        tf_den=[1474.32, 1],
-        tf_delay=343.93,
+        tf_num=[-24.44],
+        tf_den=[84487.79, 1],
+        tf_delay=0.5,
         tf_n_pade=2
     )

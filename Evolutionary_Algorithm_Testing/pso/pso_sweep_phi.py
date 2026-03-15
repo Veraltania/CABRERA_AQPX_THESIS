@@ -15,7 +15,7 @@ if __name__ == "__main__":
 
     base_config = {
         'patience_limit': 25,
-        'max_iters': 200,
+        'max_iters': 100,
         'improvement_tol': 0.01,
         'n_rounds': 50  # Keep at 50 for the final high-fidelity run!
     }

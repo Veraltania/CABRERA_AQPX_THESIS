@@ -10,14 +10,14 @@ class GAOptimizer(EvolutionaryOptimizer):
         self.parent_selection_type = config.get('parent_selection_type', "rank")
         self.keep_elitism = config.get('keep_elitism', 2)
         self.crossover_type = config.get('crossover_type', "scattered")
-        self.mutation_type = config.get('mutation_type', "adaptive")
 
-        if self.mutation_type == "adaptive":
-            self.mutation_probability = config.get('mutation_probability', [0.25, 0.05])
-        else:
-            self.mutation_percent_genes = config.get('mutation_percent_genes', 20)
+        # Explicitly setting the requested Crossover Probability (Pc)
+        self.crossover_probability = 0.90
 
     def optimize_round(self, round_num):
+        def cost_wrapper(solution):
+            return self.calculate_itae_cost(solution[0], solution[1])
+
         class Tracker:
             def __init__(self, patience, tol, cost_func):
                 self.patience = patience
@@ -28,6 +28,12 @@ class GAOptimizer(EvolutionaryOptimizer):
                 self.history = []
 
             def on_generation(self, ga_instance):
+                # Apply dynamic Mutation factor (Pm = 0.1 - 0.01 * n/P)
+                n = ga_instance.generations_completed
+                P = ga_instance.num_generations
+                ga_instance.mutation_probability = 0.1 - 0.01 * (n / P)
+
+                # Evaluate best solution
                 solution, _, _ = ga_instance.best_solution()
                 cost = self.cost_func(solution)
                 self.history.append(cost)
@@ -41,14 +47,12 @@ class GAOptimizer(EvolutionaryOptimizer):
 
                 gen_num = len(self.history)
                 if gen_num % 25 == 0 or self.counter >= self.patience:
-                    print(f"   Gen {gen_num}: Best={self.best_cost:.2f} | P: {self.counter}/{self.patience}")
+                    print(
+                        f"   Gen {gen_num}: Best={self.best_cost:.2f} | P: {self.counter}/{self.patience} | Pm: {ga_instance.mutation_probability:.4f}")
 
                 if self.counter >= self.patience:
                     print(f"   --> Stopping Early: No improvement for {self.patience} generations.")
                     return "stop"
-
-        def cost_wrapper(solution):
-            return self.calculate_itae_cost(solution[0], solution[1])
 
         def fitness_wrapper(ga_instance, solution, solution_idx):
             cost = cost_wrapper(solution)
@@ -64,10 +68,10 @@ class GAOptimizer(EvolutionaryOptimizer):
 
         if self.is_reverse_acting:
             min_kp, max_kp = safe_limit, -0.001
-            min_ki, max_ki = -0.01, -0.0001
+            min_ki, max_ki = -0.01, -1e-6
         else:
             min_kp, max_kp = 0.001, safe_limit
-            min_ki, max_ki = 0.0001, 0.01
+            min_ki, max_ki = 1e-6, 0.01
 
         bounds = [{'low': min_kp, 'high': max_kp}, {'low': min_ki, 'high': max_ki}]
 
@@ -81,15 +85,12 @@ class GAOptimizer(EvolutionaryOptimizer):
             "parent_selection_type": self.parent_selection_type,
             "keep_elitism": self.keep_elitism,
             "crossover_type": self.crossover_type,
-            "mutation_type": self.mutation_type,
+            "crossover_probability": self.crossover_probability,  # Set Pc = 0.90
+            "mutation_type": "random",  # 'random' needed to utilize exact scalar probabilities
+            "mutation_probability": 0.1,  # Set initial Pm for Generation 0
             "on_generation": tracker.on_generation,
             "suppress_warnings": True
         }
-
-        if self.mutation_type == "adaptive":
-            ga_kwargs["mutation_probability"] = self.mutation_probability
-        else:
-            ga_kwargs["mutation_percent_genes"] = self.mutation_percent_genes
 
         ga_instance = pygad.GA(**ga_kwargs)
         ga_instance.run()

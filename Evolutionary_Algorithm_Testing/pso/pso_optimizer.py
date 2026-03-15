@@ -3,29 +3,26 @@ import pyswarms as ps
 import math
 from Evolutionary_Algorithm_Testing.ea_optimizer import EvolutionaryOptimizer
 
-
 class EarlyStopping(Exception):
     pass
-
 
 class PSOOptimizer(EvolutionaryOptimizer):
     def __init__(self, config, tf_params):
         # 1. Initialize base class settings
         super().__init__(config, tf_params)
 
-        # 2. Extract PSO-specific options with robust defaults
-        # Use the Clerc-Kennedy constriction factor for assured convergence
-        phi1 = config.get('phi1', 2.05)  # Cognitive parameter
-        phi2 = config.get('phi2', 2.05)  # Social parameter
-        phi = phi1 + phi2
+        # 2. Extract/Set PSO-specific options based on the required configuration
+        self.w = config.get('w', 0.6)  # Weight value W = 0.6
+        self.c1 = config.get('c1', 2.0)  # Acceleration factor c1 = 2.0
+        self.c2 = config.get('c2', 2.0)  # Acceleration factor c2 = 2.0
 
-        # compute the Clerc-Kennedy constriction factor
-        chi = 2.0 / abs(2.0 - phi - math.sqrt(phi ** 2 - 4 * phi))
+        # Override inherited settings to match requirements
+        self.pop_size = config.get('pop_size', 100)
+        self.max_iters = config.get('max_iters', 100)
 
-        # Convert the Clerc-Kennedy-based params to usable values for PySwarm
-        self.w = chi
-        self.c1 = chi * phi1
-        self.c2 = chi * phi2
+        # Velocity bounds (Vmin = -1.0, Vmax = 1.0)
+        self.v_min = config.get('v_min', -1.0)
+        self.v_max = config.get('v_max', 1.0)
 
         # Package them for PySwarms
         self.options = {'c1': self.c1, 'c2': self.c2, 'w': self.w}
@@ -55,7 +52,7 @@ class PSOOptimizer(EvolutionaryOptimizer):
 
             if current_best < run_state['best_cost']:
                 if current_best < 1e8:
-                    if current_best < (run_state['best_cost'] - self.tol):
+                    if current_best < (run_state['best_cost'] - getattr(self, 'tol', 1e-4)):
                         run_state['patience_counter'] = 0
                     else:
                         run_state['patience_counter'] += 1
@@ -67,9 +64,9 @@ class PSOOptimizer(EvolutionaryOptimizer):
             run_state['history'].append(run_state['best_cost'])
 
             print(
-                f"   Gen {len(run_state['history'])}: Best={run_state['best_cost']:.2f} | Patience: {run_state['patience_counter']}/{self.patience}")
+                f"   Gen {len(run_state['history'])}: Best={run_state['best_cost']:.2f} | Patience: {run_state['patience_counter']}/{getattr(self, 'patience', 10)}")
 
-            if run_state['patience_counter'] >= self.patience:
+            if run_state['patience_counter'] >= getattr(self, 'patience', 10):
                 raise EarlyStopping()
 
             return costs_array
@@ -78,7 +75,7 @@ class PSOOptimizer(EvolutionaryOptimizer):
         is_reverse = getattr(self, 'is_reverse_acting', False)
 
         # 1. Provide a fallback if no stability crossing was found (infinite gain margin)
-        if self.max_kp is None:
+        if getattr(self, 'max_kp', None) is None:
             # If no limit is found, use a reasonably large limit to prevent infinite searches
             safe_limit = -100.0 if is_reverse else 100.0
             print(f"   [!] No stability crossing found. Using fallback Kp boundary: {safe_limit}")
@@ -102,18 +99,22 @@ class PSOOptimizer(EvolutionaryOptimizer):
             np.array([max_kp, max_ki], dtype=np.float64)
         )
 
-        # 4. Initialize the optimizer
+        # 4. Pack the velocity clamp
+        velocity_clamp = (self.v_min, self.v_max)
+
+        # 5. Initialize the optimizer
         optimizer = ps.single.GlobalBestPSO(
             n_particles=self.pop_size,
             dimensions=2,
             options=self.options,
-            bounds=bounds
+            bounds=bounds,
+            velocity_clamp=velocity_clamp
         )
 
         try:
             cost, pos = optimizer.optimize(objective_function, iters=self.max_iters, verbose=False)
         except EarlyStopping:
-            print(f"   --> Stopping Early: No improvement for {self.patience} generations.")
+            print(f"   --> Stopping Early: No improvement for {getattr(self, 'patience', 10)} generations.")
             cost, pos = optimizer.swarm.best_cost, optimizer.swarm.best_pos
         except Exception as e:
             print(f"   [ERROR] {e}")

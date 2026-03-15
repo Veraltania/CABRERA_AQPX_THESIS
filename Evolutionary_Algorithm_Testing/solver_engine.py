@@ -7,18 +7,16 @@ os.environ["JULIA_IO_COLORED"] = "1"
 print("Booting Julia and JIT compiling DelayDiffEq...")
 print("(Go grab a coffee. This will take ~5 minutes on the Raspberry Pi...)")
 
-# This will automatically use your juliapkg environment
 from juliacall import Main as jl
 
 # 1. DEFINE THE MATH AND SOLVER NATIVELY IN JULIA
-# This completely eliminates Python-to-Julia communication overhead during integration.
 jl.seval("""
 using DelayDiffEq
 
 function dde_system(du, u, h, p, t)
-    Kp_c, Ki_c, K_p, T_p, tau = p
-    y = u[1] 
-    
+    Kp_c, Ki_c, K_p, T_p, tau, w1, w2, w4 = p
+    y = u[1]
+
     past = h(p, t - tau)
     past_y = past[1]
     past_int_e = past[2]
@@ -26,68 +24,119 @@ function dde_system(du, u, h, p, t)
     past_setpoint = (t - tau) >= 0.0 ? 1.0 : 0.0
     u_delayed = Kp_c * (past_setpoint - past_y) + Ki_c * past_int_e
 
-    du[1] = (K_p * u_delayed - y) / T_p  
-    du[2] = 1.0 - y                      
-    du[3] = t * abs(1.0 - y)             
+    # Plant dynamics
+    du[1] = (K_p * u_delayed - y) / T_p
+
+    # Integral of error for the PI controller
+    e = 1.0 - y
+    du[2] = e
+
+    # --- SEPARATED COST FUNCTION INTEGRANDS ---
+
+    # 3. Error penalty
+    du[3] = w1 * abs(e)
+
+    # 4. Control effort penalty
+    du[4] = w2 * (u_delayed^2)
+
+    # 5. w4 penalty (Piecewise condition)
+    delta_y = y - 1.0
+    du[5] = delta_y < 0.0 ? w4 * abs(delta_y) : 0.0
 end
 
 function dde_history(p, t)
-    return [0.0, 0.0, 0.0]
+    # Expanded to 5 states
+    return [0.0, 0.0, 0.0, 0.0, 0.0]
 end
 
-function run_dde_solver(Kp_ctrl, Ki_ctrl, K_plant, T_plant, delay)
-    u0 = [0.0, 0.0, 0.0]
-    p = (Kp_ctrl, Ki_ctrl, K_plant, T_plant, delay)
-    tspan = (0.0, 10000.0)
+function run_dde_solver(Kp_ctrl, Ki_ctrl, K_plant, T_plant, delay, w1, w2, w4)
+    # Expanded to 5 states
+    u0 = [0.0, 0.0, 0.0, 0.0, 0.0]
+    p = (Kp_ctrl, Ki_ctrl, K_plant, T_plant, delay, w1, w2, w4)
     
+    # 1. Adapt tspan to system dynamics
+    # Response starts after 'delay', then needs ~3x T_plant to settle
+    t_end = delay + 3.0 * T_plant
+    tspan = (0.0, t_end)
+
     prob = DDEProblem(dde_system, u0, dde_history, tspan, p, constant_lags=[delay])
-    
+
+    # 2. Define exactly 1000 evenly spaced points
+    save_points = range(0.0, stop=t_end, length=1000)
+
     try
         sol = solve(
             prob,
             MethodOfSteps(Tsit5()),
-            saveat=10.0,
-            dtmin=1e-3,
             abstol=1e-3,
-            reltol=1e-3
+            reltol=1e-3,
+            tstops=[delay],
+            saveat=save_points # Forces the solver to save at these specific points
         )
-        
+
         if sol.retcode != ReturnCode.Success
-            return (9.0, Float64[])
+            return (9e9, 9e9, 9e9, Float64[], Float64[])
         end
-        
-        # Extract y_vals and final_itae (Julia is 1-indexed)
+
         y_vals = [u[1] for u in sol.u]
-        final_itae = sol.u[end][3] 
-        
-        return (final_itae, y_vals)
+
+        # Extract the individual integral values from the final timestep
+        int_error = sol.u[end][3]
+        int_control = sol.u[end][4]
+        int_w4 = sol.u[end][5]
+
+        t_vals = sol.t
+
+        return (int_error, int_control, int_w4, y_vals, t_vals)
     catch e
-        return (9.0, Float64[])
+        return (9e9, 9e9, 9e9, Float64[], Float64[])
     end
 end
-""")
 
-def fast_itae_diffeq(Kp_ctrl, Ki_ctrl, K_plant, T_plant, delay):
-    # 2. CALL THE JULIA WRAPPER
-    final_itae, y_vals_jl = jl.run_dde_solver(Kp_ctrl, Ki_ctrl, K_plant, T_plant, delay)
-    
-    # Check for early failure flags sent from Julia
-    if final_itae == 9.0 and len(y_vals_jl) == 0:
+def fast_fbest_diffeq(Kp_ctrl, Ki_ctrl, K_plant, T_plant, delay,
+                     w_error=1.0, w_control=0.05, w_rise=0.2, w_overshoot=1.0):
+    # Unpack the 3 distinct integrals from Julia
+    int_error, int_control, int_w4, y_vals_jl, t_vals_jl = jl.run_dde_solver(
+        Kp_ctrl, Ki_ctrl, K_plant, T_plant, delay, w_error, w_control, w_overshoot
+    )
+
+    # Check for early failure flags
+    if int_error == 9e9 and len(y_vals_jl) == 0:
         return 9.0
 
-    # Convert the julia array to a standard NumPy array for the penalty check
     y_vals = np.array(y_vals_jl)
+    t_vals = np.array(t_vals_jl)
 
-    # Apply constraints / Penalties
+    # Calculate Rise Time (t_u)
+    crossings = t_vals[y_vals >= 1.0]
+    if len(crossings) > 0:
+        t_u = crossings[0]
+    else:
+        t_u = t_vals[-1]
+
+    rise_time_penalty = w_rise * t_u
+
+    # --- PRINT THE BREAKDOWN ---
+    #
+    # print("\n--- Cost Function Breakdown ---")
+    # print(f"Error Penalty (w1):      {int_error:.4f}")
+    # print(f"Control Penalty (w2):    {int_control:.4f}")
+    # print(f"w4 Penalty (undershoot): {int_w4:.4f}")
+    # print(f"Rise Time Penalty:       {rise_time_penalty:.4f}")
+    #
+    # # Reassemble final F_best
+    f_best = int_error + int_control + int_w4 + rise_time_penalty
+    # print(f"TOTAL F_best (pre-log):  {f_best:.4f}")
+    # print("-------------------------------")
+    # Apply hard constraints
     if np.max(y_vals) > 1.2 or np.min(y_vals) < -0.2:
-        final_itae += 1e9
+        f_best += 1e9
 
-    return np.log10(max(final_itae, 1e-12))
+    return np.log10(max(f_best, 1e-12))
 
 
 # --- WARM-UP ---
-# The script will hang on this exact line while Julia compiles everything.
-_ = fast_itae_diffeq(0.1, 0.01, 1.0, 10.0, 1.0)
+_ = fast_fbest_diffeq(0.1, 0.01, 1.0, 10.0, 1.0)
 
 print("Engine Ready! JIT compilation complete.")
-print("The Evolutionary Algorithm can now run at compiled C/Fortran speeds.")
+print("The Evolutionary Algorithm is now running F_best at compiled speeds.")
