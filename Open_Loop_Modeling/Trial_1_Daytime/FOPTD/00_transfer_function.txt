@@ -1,7 +1,0 @@
-Segment: Trial_1_Daytime | Time Range: 2026-02-07 10:00:00 to 2026-02-07 15:00:00
-Model: FOPTD
-R-Squared Fit: 0.8701
-RMSE: 4.0220
-----------------------------------------
-G(s) = [ 45.5169 / (2654.5399s + 1) ] * e^(-0.0000s)
-Baseline / Offset (y0): 93.1712
