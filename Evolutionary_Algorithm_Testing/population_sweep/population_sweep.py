@@ -1,6 +1,5 @@
 import os
 import glob
-import multiprocessing
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -205,7 +204,7 @@ def generate_iteration_plots(df, base_output_dir):
     filename = os.path.join(base_output_dir, "iteration_analysis_sweep.png")
     plt.savefig(filename, dpi=300)
     print(f"[SUCCESS] Iteration analysis plot saved as '{filename}'")
-    plt.show()
+    plt.close()
 
 
 # --- 4. EXECUTION ---
@@ -273,23 +272,23 @@ if __name__ == "__main__":
              for algo in ALGO_MAP.keys()
              for size in pop_sizes]
 
-    available_cores = max(1, multiprocessing.cpu_count() - 1)
-    num_cores = min(3, available_cores)
-
-    multiprocessing.set_start_method('spawn', force=True)
-
     print(f"--- STARTING SWEEP (Output Directory: {BASE_OUTPUT_DIR}) ---")
-    print(f"Running on {num_cores} cores to prevent Memory Overflows...")
+    print("Running SEQUENTIALLY to prevent Raspberry Pi memory overflow...")
 
-    with multiprocessing.Pool(processes=num_cores) as pool:
-        raw_results = list(tqdm(pool.imap(worker, tasks), total=len(tasks)))
+    # ==========================================
+    # --- SEQUENTIAL EXECUTION BLOCK ---
+    # ==========================================
+    raw_results = []
+    for task in tqdm(tasks, total=len(tasks), desc="Executing Sweep"):
+        result = worker(task)
+        raw_results.append(result)
 
     # Pass base directory to saving functions
     df_results = save_checkpoint(raw_results, BASE_OUTPUT_DIR)
 
     if not df_results.empty:
         generate_standardized_plot(df_results, BASE_OUTPUT_DIR)
-        generate_iteration_plots(df_results, BASE_OUTPUT_DIR)  # <--- NEW FUNCTION CALLED HERE
+        generate_iteration_plots(df_results, BASE_OUTPUT_DIR)
     else:
         print("No data collected.")
 
