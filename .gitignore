@@ -25,6 +25,7 @@ figures/
 output/
 temp/
 aqpx_neo/
+aqpx_neo_mac/
 
 # --- OPERATING SYSTEM GARBAGE ---
 Thumbs.db

@@ -24,7 +24,6 @@ kiwisolver==1.4.9
 llvmlite==0.46.0
 matplotlib==3.10.8
 numba==0.63.1
-numpy==2.0.1
 packaging==26.0
 paho-mqtt==1.6.1
 pandas==3.0.1
