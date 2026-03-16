@@ -234,13 +234,13 @@ if __name__ == "__main__":
     }
 
     tf_params = {
-        'tf_num': [-24.44],
-        'tf_den': [84487.79, 1],
+        'tf_num': [45.52],
+        'tf_den': [2654.54, 1],
         'tf_delay': 0.50,
         'tf_n_pade': 2,
         'computed_delay': 0.50,
-        'is_reverse_acting': True,
-        'max_kp': -100.0
+        'is_reverse_acting': False,
+        'max_kp': 100.0
     }
 
     # Algorithm-specific configuration overrides
