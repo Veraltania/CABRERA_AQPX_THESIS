@@ -1,0 +1,7 @@
+Segment: Trial_3_Nighttime | Time Range: 2026-02-07 20:00:00 to 2026-02-07 23:59:59
+Model: FOPTDLD
+R-Squared Fit: 0.9436
+RMSE: 4.9545
+----------------------------------------
+G(s) = [ 82.2666 * (119.6390s + 1) / (3604.4543s + 1) ] * e^(-10.0000s)
+Baseline / Offset (y0): 61.3925

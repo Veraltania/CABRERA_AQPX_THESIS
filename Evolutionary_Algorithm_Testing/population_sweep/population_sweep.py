@@ -227,7 +227,7 @@ if __name__ == "__main__":
     os.makedirs(BASE_OUTPUT_DIR, exist_ok=True)
 
     shared_config = {
-        "patience_limit": 25,
+        "patience_limit": 3,
         "max_iters": 200,
         "tol": 1.0,
         "improvement_tol": 1.0,
