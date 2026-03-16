@@ -210,21 +210,15 @@ def generate_iteration_plots(df, base_output_dir):
 
 # --- 4. EXECUTION ---
 if __name__ == "__main__":
-    # 1. Capture total start time
-    start_time_sec = time.time()
-    start_datetime = datetime.now()
-    timestamp_str = start_datetime.strftime('%Y%m%d_%H%M%S')
-    print(f"\n--- EXECUTION STARTED: {start_datetime.strftime('%Y-%m-%d %H:%M:%S')} ---")
+    # Initialize multiprocessing settings once
+    multiprocessing.set_start_method('spawn', force=True)
+    available_cores = max(1, multiprocessing.cpu_count() - 2)
+    num_cores = min(3, available_cores)
 
+    # Global Sweeping Config
     START_POP = 10
     END_POP = 100
     STEP_SIZE = 10
-
-    # Easily editable base output directory name
-    BASE_OUTPUT_DIR = "results_population_sweep_tds_tf1"
-
-    # Create the root folder if it doesn't already exist to prevent PathNotFoundError
-    os.makedirs(BASE_OUTPUT_DIR, exist_ok=True)
 
     shared_config = {
         "patience_limit": 3,
@@ -234,17 +228,6 @@ if __name__ == "__main__":
         "n_rounds": 50
     }
 
-    tf_params = {
-        'tf_num': [45.52],
-        'tf_den': [2654.54, 1],
-        'tf_delay': 0.50,
-        'tf_n_pade': 2,
-        'computed_delay': 0.50,
-        'is_reverse_acting': False,
-        'max_kp': 100.0
-    }
-
-    # Algorithm-specific configuration overrides
     algo_specific_configs = {
         "GA": {
             "mating_ratio": 0.55,
@@ -269,72 +252,140 @@ if __name__ == "__main__":
     pop_sizes = list(range(START_POP, END_POP + 1, STEP_SIZE))
     if pop_sizes[-1] != END_POP: pop_sizes.append(END_POP)
 
-    tasks = [(algo, size, shared_config, tf_params, BASE_OUTPUT_DIR, algo_specific_configs.get(algo, {}))
-             for algo in ALGO_MAP.keys()
-             for size in pop_sizes]
+    # --- LIST OF TRANSFER FUNCTIONS TO PROCESS SEQUENTIALLY ---
+    transfer_functions_to_run = [
+        {
+            "base_dir": "results_population_sweep_do_tf1_daytime",
+            "tf_params": {
+                'tf_num': [51.39],
+                'tf_den': [1550.18, 1],
+                'tf_delay': 71.78,
+                'tf_n_pade': 2,
+                'computed_delay': 0.50,
+                'is_reverse_acting': False,
+                'max_kp': 100.0
+            }
+        },
+        {
+             "base_dir": "results_population_sweep_do_tf1_nighttime",
+             "tf_params": {
+                'tf_num': [92.76],
+                'tf_den': [2629.13, 1],
+                'tf_delay': 54.00,
+                'tf_n_pade': 2,
+                'computed_delay': 0.50,
+                'is_reverse_acting': False,
+                'max_kp': 100.0
+            }
+        },
+        {
+            "base_dir": "results_population_sweep_do_tf3_daytime",
+            "tf_params": {
+                'tf_num': [45.52],
+                'tf_den': [2654.54, 1],
+                'tf_delay': 0.50,
+                'tf_n_pade': 2,
+                'computed_delay': 0.50,
+                'is_reverse_acting': False,
+                'max_kp': 100.0
+            }
+        },
+        {
+             "base_dir": "results_population_sweep_do_tf3_nighttime",
+             "tf_params": {
+                'tf_num': [65.52],
+                'tf_den': [3620.37, 1],
+                'tf_delay': 1.0,
+                'tf_n_pade': 2,
+                'computed_delay': 0.50,
+                'is_reverse_acting': False,
+                'max_kp': 100.0
+            }
+        }
+    ]
 
-    available_cores = max(1, multiprocessing.cpu_count() - 2)
-    num_cores = min(3, available_cores)
+    total_global_start_time = time.time()
+    
+    # Process each transfer function sequentially
+    for idx, tf_config in enumerate(transfer_functions_to_run):
+        BASE_OUTPUT_DIR = tf_config["base_dir"]
+        tf_params = tf_config["tf_params"]
 
-    multiprocessing.set_start_method('spawn', force=True)
+        print(f"\n{'='*60}")
+        print(f"PROCESSING TRANSFER FUNCTION {idx + 1} OF {len(transfer_functions_to_run)}")
+        print(f"Output Directory: {BASE_OUTPUT_DIR}")
+        print(f"{'='*60}")
 
-    print(f"--- STARTING SWEEP (Output Directory: {BASE_OUTPUT_DIR}) ---")
-    print(f"Running on {num_cores} cores to prevent Memory Overflows...")
+        os.makedirs(BASE_OUTPUT_DIR, exist_ok=True)
 
-    with multiprocessing.Pool(processes=num_cores) as pool:
-        raw_results = list(tqdm(pool.imap(worker, tasks), total=len(tasks)))
+        start_time_sec = time.time()
+        start_datetime = datetime.now()
+        timestamp_str = start_datetime.strftime('%Y%m%d_%H%M%S')
+        print(f"--- SWEEP STARTED: {start_datetime.strftime('%Y-%m-%d %H:%M:%S')} ---")
+        print(f"Running on {num_cores} cores to prevent Memory Overflows...")
 
-    # Pass base directory to saving functions
-    df_results = save_checkpoint(raw_results, BASE_OUTPUT_DIR)
+        # Build tasks for this specific transfer function
+        tasks = [(algo, size, shared_config, tf_params, BASE_OUTPUT_DIR, algo_specific_configs.get(algo, {}))
+                 for algo in ALGO_MAP.keys()
+                 for size in pop_sizes]
 
-    if not df_results.empty:
-        generate_standardized_plot(df_results, BASE_OUTPUT_DIR)
-        generate_iteration_plots(df_results, BASE_OUTPUT_DIR)  # <--- NEW FUNCTION CALLED HERE
-    else:
-        print("No data collected.")
+        # Run Multiprocessing
+        with multiprocessing.Pool(processes=num_cores) as pool:
+            raw_results = list(tqdm(pool.imap(worker, tasks), total=len(tasks)))
 
-    # 2. Capture total end time and calculate elapsed
-    end_time_sec = time.time()
-    end_datetime = datetime.now()
-    elapsed_seconds = end_time_sec - start_time_sec
+        # Save Checkpoint & Plot
+        df_results = save_checkpoint(raw_results, BASE_OUTPUT_DIR)
+        if not df_results.empty:
+            generate_standardized_plot(df_results, BASE_OUTPUT_DIR)
+            generate_iteration_plots(df_results, BASE_OUTPUT_DIR)
+        else:
+            print("No data collected for this transfer function.")
 
-    # 3. Format total time to HH:MM:SS
-    m, s = divmod(elapsed_seconds, 60)
-    h, m = divmod(m, 60)
-    elapsed_formatted = f"{int(h):02d}:{int(m):02d}:{s:05.2f}"
+        # Capture and format end time for this TF
+        end_time_sec = time.time()
+        end_datetime = datetime.now()
+        elapsed_seconds = end_time_sec - start_time_sec
 
-    # 4. Print total timing to console
-    print(f"\n--- EXECUTION FINISHED: {end_datetime.strftime('%Y-%m-%d %H:%M:%S')} ---")
-    print(f"Total Time Elapsed: {elapsed_formatted} ({elapsed_seconds:.2f} pure seconds)")
+        m, s = divmod(elapsed_seconds, 60)
+        h, m = divmod(m, 60)
+        elapsed_formatted = f"{int(h):02d}:{int(m):02d}:{s:05.2f}"
 
-    # 5. Save TOTAL timing to CSV in the base directory
-    total_timing_filename = os.path.join(BASE_OUTPUT_DIR, f"execution_timing_total_{timestamp_str}.csv")
+        print(f"\n--- SWEEP FINISHED: {end_datetime.strftime('%Y-%m-%d %H:%M:%S')} ---")
+        print(f"Time Elapsed (Current TF): {elapsed_formatted} ({elapsed_seconds:.2f} pure seconds)")
 
-    with open(total_timing_filename, mode='w', newline='') as file:
-        writer = csv.writer(file)
-        writer.writerow(["Start Time", "End Time", "Elapsed Time (HH:MM:SS)", "Elapsed Time (Seconds)"])
-        writer.writerow([
-            start_datetime.strftime('%Y-%m-%d %H:%M:%S'),
-            end_datetime.strftime('%Y-%m-%d %H:%M:%S'),
-            elapsed_formatted,
-            round(elapsed_seconds, 2)
-        ])
-    print(f"Total timing details saved to: {total_timing_filename}")
+        # Save Execution Timing
+        total_timing_filename = os.path.join(BASE_OUTPUT_DIR, f"execution_timing_total_{timestamp_str}.csv")
+        with open(total_timing_filename, mode='w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(["Start Time", "End Time", "Elapsed Time (HH:MM:SS)", "Elapsed Time (Seconds)"])
+            writer.writerow([
+                start_datetime.strftime('%Y-%m-%d %H:%M:%S'),
+                end_datetime.strftime('%Y-%m-%d %H:%M:%S'),
+                elapsed_formatted,
+                round(elapsed_seconds, 2)
+            ])
+        print(f"Total timing details saved to: {total_timing_filename}")
 
-    # 6. Save INDIVIDUAL WORKER timings to CSV in the base directory
-    worker_timing_filename = os.path.join(BASE_OUTPUT_DIR, f"execution_timing_workers_{timestamp_str}.csv")
-    with open(worker_timing_filename, mode='w', newline='') as file:
-        writer = csv.writer(file)
-        writer.writerow(["Algorithm", "Population Size", "Elapsed Time (HH:MM:SS)", "Elapsed Time (Seconds)"])
+        # Save Worker Timings
+        worker_timing_filename = os.path.join(BASE_OUTPUT_DIR, f"execution_timing_workers_{timestamp_str}.csv")
+        with open(worker_timing_filename, mode='w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(["Algorithm", "Population Size", "Elapsed Time (HH:MM:SS)", "Elapsed Time (Seconds)"])
 
-        # Sort results neatly by Algorithm, then Population Size
-        sorted_results = sorted(raw_results, key=lambda x: (x['algo'], x['pop_size']))
+            sorted_results = sorted(raw_results, key=lambda x: (x['algo'], x['pop_size']))
+            for res in sorted_results:
+                w_sec = res['elapsed_time']
+                wm, ws = divmod(w_sec, 60)
+                wh, wm = divmod(wm, 60)
+                w_formatted = f"{int(wh):02d}:{int(wm):02d}:{ws:05.2f}"
+                writer.writerow([res['algo'], res['pop_size'], w_formatted, round(w_sec, 2)])
+        print(f"Individual worker timings saved to: {worker_timing_filename}\n")
 
-        for res in sorted_results:
-            w_sec = res['elapsed_time']
-            wm, ws = divmod(w_sec, 60)
-            wh, wm = divmod(wm, 60)
-            w_formatted = f"{int(wh):02d}:{int(wm):02d}:{ws:05.2f}"
-            writer.writerow([res['algo'], res['pop_size'], w_formatted, round(w_sec, 2)])
-
-    print(f"Individual worker timings saved to: {worker_timing_filename}\n")
+    # Final overall execution log
+    global_elapsed = time.time() - total_global_start_time
+    gm, gs = divmod(global_elapsed, 60)
+    gh, gm = divmod(gm, 60)
+    print(f"\n{'='*60}")
+    print(f"ALL TRANSFER FUNCTIONS PROCESSED.")
+    print(f"Total Global Execution Time: {int(gh):02d}:{int(gm):02d}:{gs:05.2f}")
+    print(f"{'='*60}\n")

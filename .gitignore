@@ -38,6 +38,7 @@ __pycache__/
 .venv/
 env/
 .ipynb_checkpoints/
+.vscode/
 
 # --- WRITING TOOLS (LaTeX Junk) ---
 *.aux

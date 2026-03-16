@@ -190,19 +190,16 @@ if __name__ == "__main__":
         delta_u=10.0  # Change in input variable (e.g. pump speed % or voltage change)
     )
 
-    # ==========================================
-    # EXAMPLE USAGE 2: DO OPEN LOOP (TRIAL 1)
-    # ==========================================
     do_file = [
         r'C:\Users\Dindo\Documents\aqpx\Cabrera_Thesis_AQPX\Open_Loop_Modeling\data\AQPX_data_log_2026-02-05.csv']
 
     do_params = analyze_open_loop(
         file_paths=do_file,
-        start_step='2026-02-05 10:00:00',
-        end_step='2026-02-05 15:00:00',
+        start_step='2026-02-07 20:00:00',
+        end_step='2026-02-07 23:59:59',
         target_column='MCP_WQ_DO',
         window_seconds=60,
-        tf_name='DO_Aeration_Transfer_Function',  # Unique folder will be named this
-        t_step_time='2026-02-05 10:10:00',
+        tf_name='DO_Aeration_Transfer_Function',  
+        t_step_time='2026-02-07 10:00:00',
         delta_u=1.0  # 1 to denote an ON/OFF state change, or standard magnitude
     )
