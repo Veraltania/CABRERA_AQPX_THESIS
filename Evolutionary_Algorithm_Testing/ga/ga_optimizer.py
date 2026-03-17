@@ -46,12 +46,12 @@ class GAOptimizer(EvolutionaryOptimizer):
                         self.counter += 1
 
                 gen_num = len(self.history)
-                if gen_num % 25 == 0 or self.counter >= self.patience:
-                    print(
-                        f"   Gen {gen_num}: Best={self.best_cost:.2f} | P: {self.counter}/{self.patience} | Pm: {ga_instance.mutation_probability:.4f}")
+                #if gen_num % 25 == 0 or self.counter >= self.patience:
+                    #print(
+                        #f"   Gen {gen_num}: Best={self.best_cost:.2f} | P: {self.counter}/{self.patience} | Pm: {ga_instance.mutation_probability:.4f}")
 
                 if self.counter >= self.patience:
-                    print(f"   --> Stopping Early: No improvement for {self.patience} generations.")
+                    #print(f"   --> Stopping Early: No improvement for {self.patience} generations.")
                     return "stop"
 
         def fitness_wrapper(ga_instance, solution, solution_idx):

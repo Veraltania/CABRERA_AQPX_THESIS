@@ -63,8 +63,8 @@ class PSOOptimizer(EvolutionaryOptimizer):
 
             run_state['history'].append(run_state['best_cost'])
 
-            print(
-                f"   Gen {len(run_state['history'])}: Best={run_state['best_cost']:.2f} | Patience: {run_state['patience_counter']}/{getattr(self, 'patience', 10)}")
+            #print(
+                #f"   Gen {len(run_state['history'])}: Best={run_state['best_cost']:.2f} | Patience: {run_state['patience_counter']}/{getattr(self, 'patience', 10)}")
 
             if run_state['patience_counter'] >= getattr(self, 'patience', 10):
                 raise EarlyStopping()
@@ -114,7 +114,7 @@ class PSOOptimizer(EvolutionaryOptimizer):
         try:
             cost, pos = optimizer.optimize(objective_function, iters=self.max_iters, verbose=False)
         except EarlyStopping:
-            print(f"   --> Stopping Early: No improvement for {getattr(self, 'patience', 10)} generations.")
+            #print(f"   --> Stopping Early: No improvement for {getattr(self, 'patience', 10)} generations.")
             cost, pos = optimizer.swarm.best_cost, optimizer.swarm.best_pos
         except Exception as e:
             print(f"   [ERROR] {e}")

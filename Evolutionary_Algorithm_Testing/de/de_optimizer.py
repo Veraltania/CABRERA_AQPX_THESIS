@@ -35,11 +35,11 @@ class DEOptimizer(EvolutionaryOptimizer):
                     else:
                         self.counter += 1
 
-                print(
-                    f"   Gen {len(self.history)}: Cost={cost:.2f} (Best={self.best_cost:.2f}) | Patience: {self.counter}/{self.patience}")
+                #print(
+                    #f"   Gen {len(self.history)}: Cost={cost:.2f} (Best={self.best_cost:.2f}) | Patience: {self.counter}/{self.patience}")
 
                 if self.counter >= self.patience:
-                    print(f"   --> Stopping Early: No improvement for {self.patience} generations.")
+                    #print(f"   --> Stopping Early: No improvement for {self.patience} generations.")
                     return True
 
         tracker = Tracker(self.patience, self.tol)

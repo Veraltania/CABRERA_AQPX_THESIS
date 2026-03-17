@@ -3,98 +3,131 @@ import glob
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
+from pathlib import Path
 
-# 1. Configuration - Matches your BASE_OUTPUT_DIR
-BASE_DIR = "results_population_sweep_tds_tf1"
+# --- PLOTTING FUNCTIONS ---
+def generate_cost_line_graph(df, output_dir):
+    if df.empty: return
+    print(f"Generating Cost Line Graph in {output_dir}...")
 
+    # Force numeric to prevent silent Seaborn rendering failures
+    df["Population Size"] = pd.to_numeric(df["Population Size"], errors='coerce')
+    df["Final_Cost"] = pd.to_numeric(df["Final_Cost"], errors='coerce')
 
-def load_and_clean_data(base_dir):
-    """Finds the latest checkpoint and cleans out header strings from the data."""
-    search_pattern = os.path.join(base_dir, "checkpoint_sweep_*.csv")
-    list_of_files = glob.glob(search_pattern)
-
-    if not list_of_files:
-        print(f"ERROR: No checkpoint CSV found in {base_dir}. Run your sweep first.")
-        return None
-
-    latest_file = max(list_of_files, key=os.path.getmtime)
-    print(f"Cleaning and loading: {latest_file}")
-
-    df = pd.read_csv(latest_file)
-
-    # CRITICAL FIX: Convert columns to numeric and drop any rows that were header strings
-    # This prevents the "useless" categorical axis you saw in the image.
-    cols_to_fix = ['Final_Cost', 'Iterations', 'Population Size']
-    for col in cols_to_fix:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors='coerce')
-
-    # Remove rows that couldn't be converted (the 'IDIOT' strings in the data)
-    df = df.dropna(subset=['Final_Cost', 'Iterations'])
-    return df
-
-
-def generate_report_plots(df):
-    if df is None or df.empty:
-        return
-
-    sns.set_theme(style="whitegrid")
-
-    # --- PLOT 1: COST BOXPLOTS ---
-    # x-axis = Algorithm, y-axis = Cost, Facet = Population
-    print("Plotting Cost Boxplots...")
-    g1 = sns.catplot(
-        data=df, x="Algorithm", y="Final_Cost", col="Population Size",
-        kind="box", col_wrap=3, height=4, aspect=1.2,
-        sharey=False,  # Allows each population to be seen clearly
-        palette="husl"
+    plt.figure(figsize=(10, 6))
+    ax = sns.lineplot(
+        data=df,
+        x="Population Size",
+        y="Final_Cost",
+        hue="Algorithm",
+        marker="o",
+        linewidth=2,
+        errorbar=None, 
+        palette="Set1"
     )
-    for ax in g1.axes.flat:
-        ax.set_ylim(0, None)  # Force Y-axis to start at 0
-        ax.set_ylabel("Final Cost (ITAE)")
-        ax.tick_params(labelbottom=True)  # Ensure Algo names show on every plot
 
-    g1.fig.subplots_adjust(top=0.9)
-    g1.fig.suptitle("Cost Distribution per Algorithm and Population Size", fontsize=16)
-    g1.savefig(os.path.join(BASE_DIR, "fixed_cost_boxplots.png"), dpi=300)
+    ax.set_title("Final Cost vs. Population Size")
+    ax.set_xlabel("Population Size")
+    ax.set_ylabel("Final Cost")
+    ax.set_ylim(bottom=0)  
+    ax.xaxis.set_major_locator(ticker.MaxNLocator(integer=True))
+    ax.grid(True, linestyle='--', alpha=0.5)
 
-    # --- PLOT 2: ITERATION BOXPLOTS ---
-    # x-axis = Algorithm, y-axis = Iterations, Facet = Population
-    print("Plotting Iteration Boxplots...")
-    g2 = sns.catplot(
-        data=df, x="Algorithm", y="Iterations", col="Population Size",
-        kind="box", col_wrap=3, height=4, aspect=1.2,
-        sharey=False,
-        palette="Set2"
+    # FORCE THE LEGEND
+    ax.legend(title="Algorithm", loc='best')
+
+    plt.tight_layout()
+
+    filename = os.path.join(output_dir, "cost_vs_pop_size_linegraph.png")
+    plt.savefig(filename, dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f" -> Saved: {filename}")
+
+
+def generate_iteration_boxplots(df, output_dir):
+    if df.empty: return
+    print(f"Generating Iteration Box Plots in {output_dir}...")
+
+    # Force numeric to prevent silent Seaborn rendering failures
+    df["Population Size"] = pd.to_numeric(df["Population Size"], errors='coerce')
+    df["Iterations"] = pd.to_numeric(df["Iterations"], errors='coerce')
+
+    # sharex=False and sharey=False forces Seaborn to give EVERY plot its own axes
+    g = sns.catplot(
+        data=df,
+        x="Algorithm",
+        y="Iterations",
+        col="Population Size",
+        col_wrap=3,
+        hue="Algorithm",
+        kind="box",
+        height=4,
+        aspect=1.2,
+        sharex=False, 
+        sharey=False, 
+        palette="Set2",
+        legend=False # Disable auto-legend so we can force it below
     )
-    for ax in g2.axes.flat:
-        ax.set_ylim(0, None)
-        ax.set_ylabel("Number of Iterations")
-        ax.tick_params(labelbottom=True)
 
-    g2.fig.subplots_adjust(top=0.9)
-    g2.fig.suptitle("Iterations to Convergence per Population Size", fontsize=16)
-    g2.savefig(os.path.join(BASE_DIR, "fixed_iteration_boxplots.png"), dpi=300)
+    g.set_titles("Pop Size: {col_name}")
 
-    # --- PLOT 3: COST VS ITERATIONS (Scatter) ---
-    # Shows the trade-off per population size
-    print("Plotting Cost vs Iteration Scatter...")
-    g3 = sns.relplot(
-        data=df, x="Iterations", y="Final_Cost", hue="Algorithm",
-        col="Population Size", col_wrap=3, height=4, aspect=1.2,
-        kind="scatter", s=70, alpha=0.6, palette="bright"
-    )
-    for ax in g3.axes.flat:
-        ax.set_ylim(0, None)
-        ax.set_xlim(0, None)
+    # FORCE X and Y labels on EVERY subplot, and lock y-axis to 0
+    for ax in g.axes.flat:
+        ax.set_xlabel("Algorithm", fontweight='bold')
+        ax.set_ylabel("Number of Iterations", fontweight='bold')
+        ax.set_ylim(bottom=0)
         ax.grid(True, linestyle='--', alpha=0.5)
 
-    g3.fig.subplots_adjust(top=0.9)
-    g3.fig.suptitle("Efficiency: Cost vs Iterations per Population Size", fontsize=16)
-    g3.savefig(os.path.join(BASE_DIR, "fixed_cost_vs_iteration.png"), dpi=300)
+    # FORCE THE LEGEND ON THE ENTIRE GRID
+    g.add_legend(title="Algorithm", bbox_to_anchor=(1.02, 0.5), loc='center left')
+    
+    # Apply tight layout to ensure labels and legends don't overlap
+    g.tight_layout()
+
+    filename = os.path.join(output_dir, "iteration_boxplots_sweep.png")
+    g.savefig(filename, dpi=300, bbox_inches='tight')
+    plt.close('all')
+    print(f" -> Saved: {filename}")
 
 
+# --- EXECUTION ---
 if __name__ == "__main__":
-    results_df = load_and_clean_data(BASE_DIR)
-    generate_report_plots(results_df)
-    print(f"\nSUCCESS: All plots saved in {BASE_DIR}")
+    # Directories from your main script
+
+    base_dirs = [
+        "results_population_sweep_do_tf1_daytime",
+        "results_population_sweep_do_tf1_nighttime",
+        "results_population_sweep_do_tf3_daytime",
+        "results_population_sweep_do_tf3_nighttime"
+    ]
+
+    script_dir = Path(__file__).parent.resolve()
+    batch_dir = "BATCH_2"
+
+    for folder_name in base_dirs:
+        target_dir = script_dir / batch_dir / folder_name
+        
+        if not target_dir.exists():
+            print(f"\n[SKIP] Directory not found: {target_dir}")
+            continue
+            
+        # Find the latest checkpoint CSV in the directory
+        search_pattern = os.path.join(target_dir, "checkpoint_sweep_*.csv")
+        csv_files = glob.glob(search_pattern)
+        
+        if not csv_files:
+            print(f"\n[SKIP] No checkpoint CSV found in {target_dir}")
+            continue
+            
+        # Always grab the most recent run's data
+        latest_csv = max(csv_files, key=os.path.getmtime)
+        print(f"\nProcessing data from: {latest_csv}")
+        
+        # Load data and plot
+        try:
+            df = pd.read_csv(latest_csv)
+            generate_cost_line_graph(df, target_dir)
+            generate_iteration_boxplots(df, target_dir)
+        except Exception as e:
+            print(f"[ERROR] Failed to process {latest_csv}: {e}")
