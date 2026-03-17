@@ -84,8 +84,6 @@ def worker(task):
             "elapsed_time": worker_end_time - worker_start_time
         }
 
-    time.sleep(1.0)
-
     cost_results = []
     kp_results = []
     ki_results = []

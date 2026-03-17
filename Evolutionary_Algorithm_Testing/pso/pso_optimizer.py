@@ -35,21 +35,20 @@ class PSOOptimizer(EvolutionaryOptimizer):
         }
 
         def objective_function(particles):
-            n_particles = particles.shape[0]
-            costs = []
+            # 1. Faster iteration: Evaluate costs using a list comprehension.
+            # This avoids the heavy overhead of repeated Python .append() calls.
+            costs_array = np.array([
+                self.calculate_itae_cost(p[0], p[1]) for p in particles
+            ])
 
-            for i in range(n_particles):
-                cost = self.calculate_itae_cost(particles[i, 0], particles[i, 1])
+            # 2. Vectorized sanitization: Replace NaNs and Infs across the whole array instantly.
+            # This replaces the element-wise `if np.isinf(cost)` checks.
+            costs_array = np.nan_to_num(costs_array, nan=9.0, posinf=9.0, neginf=9.0)
 
-                # --- FIX: Sanitize costs to prevent PySwarms broadcast error ---
-                if np.isinf(cost) or np.isnan(cost):
-                    cost = 9.0  # Assign a heavy penalty cost instead of infinity
-
-                costs.append(cost)
-
-            costs_array = np.array(costs)
+            # 3. Find the best cost for this iteration
             current_best = np.min(costs_array)
 
+            # --- Early Stopping & Tracking Logic ---
             if current_best < run_state['best_cost']:
                 if current_best < 1e8:
                     if current_best < (run_state['best_cost'] - getattr(self, 'tol', 1e-4)):
@@ -62,9 +61,6 @@ class PSOOptimizer(EvolutionaryOptimizer):
                     run_state['patience_counter'] += 1
 
             run_state['history'].append(run_state['best_cost'])
-
-            #print(
-                #f"   Gen {len(run_state['history'])}: Best={run_state['best_cost']:.2f} | Patience: {run_state['patience_counter']}/{getattr(self, 'patience', 10)}")
 
             if run_state['patience_counter'] >= getattr(self, 'patience', 10):
                 raise EarlyStopping()
