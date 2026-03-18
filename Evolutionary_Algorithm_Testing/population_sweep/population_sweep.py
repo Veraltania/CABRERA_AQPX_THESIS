@@ -217,7 +217,7 @@ if __name__ == "__main__":
 
     total_global_start_time = time.time()
     script_dir = Path(__file__).parent.resolve()
-    batch_dir = "BATCH_2"
+    batch_dir = "BATCH_3"
 
     with multiprocessing.Pool(processes=num_cores) as pool:
         for idx, tf_config in enumerate(transfer_functions_to_run):
