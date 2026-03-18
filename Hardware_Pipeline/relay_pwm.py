@@ -12,7 +12,7 @@ class TimeProportionalRelay:
         self.thread = None
 
     def set_duty_cycle(self, duty_cycle: float):
-        """Updates the target duty cycle (0.0 to 1.0)."""
+        """Updates the setpoint duty cycle (0.0 to 1.0)."""
 
         # ensure that duty_cycle is not out of bounds
         self.duty_cycle = max(0.0, min(1.0, duty_cycle))

@@ -64,6 +64,7 @@ if __name__ == '__main__':
     for name, strategy, start, end in do_controller_configs:
         controller = DOController(
             name=name,
+            setpoint=6.0,
             strategy=strategy,
             schedule=DailyTimeSchedule(start, end),
             actuator=do_relay
@@ -73,6 +74,7 @@ if __name__ == '__main__':
     for name, strategy, start, end in tds_controller_configs:
         controller = TDSController(
             name=name,
+            setpoint=220,
             strategy=strategy,
             schedule=DailyTimeSchedule(start, end),
             actuator=tds_relay

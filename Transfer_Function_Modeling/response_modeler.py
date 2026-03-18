@@ -103,7 +103,7 @@ def plot_and_save(t, y_raw, y_smooth, y_model, target_column, tf_name, output_ba
     plt.close()
     print(f"Plot successfully saved to: {save_path}")
 
-def analyze_open_loop(file_paths, start_step, end_step, target_column, window_seconds, tf_name, t_step_time, delta_u):
+def analyze_response(file_paths, start_step, end_step, target_column, window_seconds, tf_name, t_step_time, delta_u):
     """
     Main execution wrapper that ties extraction, Notebook FOPTD fitting, and plot saving together.
     """
@@ -171,14 +171,22 @@ def analyze_open_loop(file_paths, start_step, end_step, target_column, window_se
 if __name__ == "__main__":
     do_file = [r'D:\aqpx\Cabrera_Thesis_AQPX\Transfer_Function_Modeling\data\AQPX_data_log_2026-02-05.csv']
 
-    do_params = analyze_open_loop(
+    base_data_path = r'D:\aqpx\Cabrera_Thesis_AQPX\Transfer_Function_Modeling\data'
+    tds_files = [
+        fr'{base_data_path}\AQPX_data_log_2026-02-09.csv',
+        fr'{base_data_path}\AQPX_data_log_2026-02-10.csv',
+        fr'{base_data_path}\AQPX_data_log_2026-02-11.csv',
+        fr'{base_data_path}\AQPX_data_log_2026-02-12.csv'
+    ]
+
+    tds_params = analyze_response(
         file_paths=do_file,
-        start_step='2026-02-05 20:00:00',
-        end_step='2026-02-05 23:59:59',
+        start_step='2026-02-05 10:00:00',
+        end_step='2026-02-05 15:00:00',
         target_column='MCP_WQ_DO',
         window_seconds=60,
-        tf_name='DO_Aeration_Transfer_Function',
-        t_step_time='2026-02-05 20:00:00',
+        tf_name='DO_TF1',
+        t_step_time='2026-02-05 10:00:00',
         delta_u=1.0  # 1 to denote an ON/OFF state change, or standard magnitude
     )
 

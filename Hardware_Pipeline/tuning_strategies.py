@@ -75,7 +75,7 @@ class AdaptiveTuningStrategy(TuningStrategy):
                 
                 if percent_change >= 0.05:
                     print(f"[{controller.name}-Adaptive] ITAE shift of {percent_change*100:.1f}% detected! Triggering EA retune...")
-                    controller.tune()
+                    controller.retune()
             
             # Shift windows and reset timer
             self.itae_previous_window = controller.itae_current_window

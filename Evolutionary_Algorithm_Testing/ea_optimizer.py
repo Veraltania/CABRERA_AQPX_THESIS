@@ -247,7 +247,7 @@ class EvolutionaryOptimizer(ABC):
                 label=f'Best Params (Kp={best_Kp:.4f}, Ki={best_Ki:.4f})'
             )
 
-        # Plot the target setpoint line
+        # Plot the setpoint setpoint line
         plt.axhline(1.0, color='red', linestyle='--', linewidth=2, label='Target Setpoint (1.0)')
 
         # Plot styling
