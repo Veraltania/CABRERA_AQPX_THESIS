@@ -40,8 +40,8 @@ def publish_command(command):
 def main():
     """Parses command-line arguments and sends the MQTT command."""
     if len(sys.argv) != 3:
-        print("Usage: python aqpx_controller.py <relay_number> <state>")
-        print("Example: python aqpx_controller.py 1 ON")
+        print("Usage: python aqpx_actuation_orchestrator.py <relay_number> <state>")
+        print("Example: python aqpx_actuation_orchestrator.py 1 ON")
         sys.exit(1)
 
     relay_num = sys.argv[1]

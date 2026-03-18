@@ -1,16 +1,7 @@
-import paho.mqtt.client as mqtt
-import time
-import sys
-import os
-import csv
-import datetime
-from abc import ABC, abstractmethod
-
-from Hardware_Pipeline.aqpx_controller import AqpxController
-from Hardware_Pipeline.aqpx_logger import AqpxLogger
 from Hardware_Pipeline.controllers import *
 from Hardware_Pipeline.schedule_policies import *
 from Hardware_Pipeline.tuning_strategies import *
+from Hardware_Pipeline.relay_pwm import *
 
 class AquaponicsSystem:
     def __init__(self, controllers, broker="localhost", port=1883):
@@ -45,6 +36,14 @@ class AquaponicsSystem:
             sys.exit(0)
 
 if __name__ == '__main__':
+    orchestrator = AqpxActuationOrchestrator(broker="localhost", port=1883)
+    orchestrator.connect()
+
+    do_relay = TimeProportionalRelay(actuator=orchestrator, relay_num='1', window_secs=600)
+    do_relay.start()
+
+    tds_relay = TimeProportionalRelay(actuator=orchestrator, relay_num='2', window_secs=1800)
+    tds_relay.start()
 
     do_controller_configs = [
         ("DO-Day-Adaptive", AdaptiveTuningStrategy(),   datetime.time(0, 0, 0),  datetime.time(5, 59, 59)),
@@ -66,7 +65,8 @@ if __name__ == '__main__':
         controller = DOController(
             name=name,
             strategy=strategy,
-            schedule=DailyTimeSchedule(start, end)
+            schedule=DailyTimeSchedule(start, end),
+            actuator=do_relay
         )
         active_controllers.append(controller)
 
@@ -74,7 +74,8 @@ if __name__ == '__main__':
         controller = TDSController(
             name=name,
             strategy=strategy,
-            schedule=DailyTimeSchedule(start, end)
+            schedule=DailyTimeSchedule(start, end),
+            actuator=tds_relay
         )
         active_controllers.append(controller)
         

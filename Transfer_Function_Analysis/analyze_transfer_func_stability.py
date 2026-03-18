@@ -2,7 +2,6 @@ import control as ct
 import numpy as np
 import matplotlib.pyplot as plt
 
-
 def define_transfer_func(num, den, delay, n_pade):
     G_linear = ct.TransferFunction(num, den)
 

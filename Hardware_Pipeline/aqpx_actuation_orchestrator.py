@@ -1,26 +1,27 @@
 import paho.mqtt.client as mqtt
+import threading
 
-class AqpxController:
+class AqpxActuationOrchestrator:
     """Handles sending commands to the aquaponics hardware."""
     
     VALID_RELAYS = ['1', '2', '3', '4']
     VALID_STATES = ['ON', 'OFF']
 
-    # Notice how broker and port are now injected via the constructor
     def __init__(self, broker="localhost", port=1883, topic="aquaponics_commands"):
         self.broker = broker
         self.port = port
         self.topic = topic
         self.client = mqtt.Client(client_id="rpi_controller")
+        self.lock = threading.Lock()
         
     def connect(self):
         """Establishes a persistent connection for continuous PID control."""
         try:
             self.client.connect(self.broker, self.port, 60)
             self.client.loop_start()
-            print(f"[Controller] Connected to MQTT Broker at {self.broker}:{self.port}.")
+            print(f"[Actuator] Connected to MQTT Broker at {self.broker}:{self.port}.")
         except Exception as e:
-            print(f"[Controller] Connection error: {e}")
+            print(f"[Actuator] Connection error: {e}")
 
     def disconnect(self):
         self.client.loop_stop()
