@@ -67,7 +67,8 @@ end
 function run_dde_solver(Kp_ctrl, Ki_ctrl, K_plant, T_plant, delay, w1, w2, w4)
     u0 = [0.0, 0.0, 0.0, 0.0, 0.0]
     p = (Kp_ctrl, Ki_ctrl, K_plant, T_plant, delay, w1, w2, w4)
-    tspan = (0.0, 10000.0)
+    simulation_time = T_plant * 5 + delay
+    tspan = (0.0, simulation_time)
 
     prob = DDEProblem(dde_system, u0, dde_history, tspan, p, constant_lags=[delay])
 
@@ -81,7 +82,7 @@ function run_dde_solver(Kp_ctrl, Ki_ctrl, K_plant, T_plant, delay, w1, w2, w4)
         )
 
         if sol.retcode != ReturnCode.Success
-            return (9e9, 9e9, 9e9, Float64[], Float64[])
+            return (1e20, 1e20, 1e20, Float64[], Float64[])
         end
 
         y_vals = [u[1] for u in sol.u]
@@ -95,7 +96,7 @@ function run_dde_solver(Kp_ctrl, Ki_ctrl, K_plant, T_plant, delay, w1, w2, w4)
 
         return (int_error, int_control, int_w4, y_vals, t_vals)
     catch e
-        return (9e9, 9e9, 9e9, Float64[], Float64[])
+        return (1e20, 1e20, 1e20, Float64[], Float64[])
     end
 end
 """)
@@ -108,20 +109,25 @@ def fast_fbest_diffeq(Kp_ctrl, Ki_ctrl, K_plant, T_plant, delay,
     )
 
     # Check for early failure flags
-    if int_error == 9e9 and len(y_vals_jl) == 0:
-        return 9.0
+    if int_error == 1e20 and len(y_vals_jl) == 0:
+        return 20.0
 
     y_vals = np.array(y_vals_jl)
     t_vals = np.array(t_vals_jl)
 
-    # Calculate Rise Time (t_u)
-    crossings = t_vals[y_vals >= 1.0]
-    if len(crossings) > 0:
-        t_u = crossings[0]
-    else:
-        t_u = t_vals[-1]
+    # Calculate Rise Time (defined as the difference of 10% and 90% of time to reach steady-state)
+    crossings_10 = np.where(y_vals >= 0.1)[0]
+    crossings_90 = np.where(y_vals >= 0.9)[0]
+    rise_time = 0
 
-    rise_time_penalty = w_rise * t_u
+    if len(crossings_10) > 0 and len(crossings_90) > 0:
+        t_10 = t_vals[crossings_10[0]]
+        t_90 = t_vals[crossings_90[0]]
+        rise_time = t_90 - t_10
+    else:
+        rise_time = T_plant * 100 # heavy penalty
+
+    rise_time_penalty = w_rise * rise_time
 
     f_best = int_error + int_control + int_w4 + rise_time_penalty
 
@@ -159,7 +165,6 @@ class EvolutionaryOptimizer(ABC):
         )
         self.output_dir = self.setup_experiment_dir(folder_name)
 
-        # Raw params for Numba solver
         self.K_plant = tf_params['tf_num'][0]
         self.T_plant = tf_params['tf_den'][0]
         self.delay = tf_params.get('computed_delay', 0.5)
@@ -218,34 +223,45 @@ class EvolutionaryOptimizer(ABC):
         ctrl = ct.TransferFunction([Kp, Ki], [1, 0])
         try:
             sys = ct.feedback(self.plant * ctrl, 1)
-            T_sim = np.linspace(0, 10000, 1000)
+            simulation_time = self.delay + (self.T_plant * 5)
+            T_sim = np.linspace(0, simulation_time, 1000)
             T, y = ct.step_response(sys, T_sim)
             return T, y * amplitude
         except:
             return None, None
 
     def save_plots(self, round_num, history, best_Kp, best_Ki):
-        # Determine step direction based on plant gain
-        step_amplitude = -1.0 if self.is_reverse_acting else 1.0
-
-        # Step Response Plot
-        T_best, y_best = self.simulate_response(best_Kp, best_Ki, amplitude=step_amplitude)
+        """Generates and saves the step response plot for the best parameters."""
+        
+        T_best, y_best = self.simulate_response(best_Kp, best_Ki, amplitude=1.0)
 
         plt.figure(figsize=(10, 6))
+        
         if T_best is not None:
-            label_text = f'Best Params (Step: {step_amplitude})'
-            plt.plot(T_best, y_best, linewidth=3, label=label_text)
+            # Plot the actual system response
+            plt.plot(
+                T_best, y_best, 
+                linewidth=3, 
+                color='#1f77b4', 
+                label=f'Best Params (Kp={best_Kp:.4f}, Ki={best_Ki:.4f})'
+            )
 
-        # Update the target line to match the negative step
-        plt.axhline(step_amplitude, color='r', linestyle='--', label=f'Target ({step_amplitude})')
+        # Plot the target setpoint line
+        plt.axhline(1.0, color='red', linestyle='--', linewidth=2, label='Target Setpoint (1.0)')
 
-        plt.title(
-            f'Negative Step Response - Round {round_num}' if self.is_reverse_acting else f'Step Response - Round {round_num}')
-        plt.ylabel('Output Response')
-        plt.xlabel('Time (s)')
-        plt.grid(True)
-        plt.legend()
-        plt.savefig(self.output_dir / f'response_round_{round_num}.png')
+        # Plot styling
+        plt.title(f'Closed-Loop Step Response - Round {round_num}', fontsize=14, fontweight='bold')
+        plt.ylabel('Process Output (y)', fontsize=12)
+        plt.xlabel('Time (s)', fontsize=12)
+        
+        # Add a nice grid for readability
+        plt.grid(True, which='both', linestyle=':', linewidth=0.7)
+        plt.legend(loc='lower right', fontsize=11)
+        
+        # Save and close (added zero-padding to the filename for better sorting, e.g., 025, 050)
+        plot_path = self.output_dir / f'response_round_{round_num:03d}.png'
+        plt.tight_layout()
+        plt.savefig(plot_path, dpi=300)
         plt.close()
 
     # -- Main Experiment Loop --
