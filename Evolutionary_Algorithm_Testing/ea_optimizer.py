@@ -11,44 +11,53 @@ import matplotlib.pyplot as plt
 # ==========================================
 os.environ["JULIA_IO_COLORED"] = "1"
 
-print("Booting Julia and JIT compiling DelayDiffEq...")
-print("(Go grab a coffee. This will take ~5 minutes on the Raspberry Pi...)")
-
 from juliacall import Main as jl
 
 # 1. DEFINE THE MATH AND SOLVER NATIVELY IN JULIA
 jl.seval("""
 using DelayDiffEq
 
+# du --> rate of change of the system states
+# u --> current values of the system states
+# h --> history to account for delay, looks back in time to see previous state
+# p --> parameters of the system (gains, time constants, weights)
+# t --> current simulation time
 function dde_system(du, u, h, p, t)
     Kp_c, Ki_c, K_p, T_p, tau, w1, w2, w4 = p
     y = u[1]
 
-    past = h(p, t - tau)
-    past_y = past[1]
-    past_int_e = past[2]
+    past = h(p, t - tau) # state of the system t - tau seconds ago
+    past_y = past[1] # past system output
+    past_int_e = past[2] # past accumulated error 
 
-    past_setpoint = (t - tau) >= 0.0 ? 1.0 : 0.0
+    if (t-tau) >= 0.0
+         past_setpoint = 1.0
+    else
+         past_setpoint = 0.0
+    end
+
+    # calculate the control signal generated in the past
     u_delayed = Kp_c * (past_setpoint - past_y) + Ki_c * past_int_e
 
-    # Plant dynamics
+    # Plant dynamics, FOPTD model
     du[1] = (K_p * u_delayed - y) / T_p
 
     # Integral of error for the PI controller
     e = 1.0 - y
     du[2] = e
 
-    # --- SEPARATED COST FUNCTION INTEGRANDS ---
-
-    # 3. Error penalty
+    # Error penalty
     du[3] = w1 * abs(e)
 
-    # 4. Control effort penalty
+    # Control effort penalty
     du[4] = w2 * (u_delayed^2)
 
-    # 5. w4 penalty (Piecewise condition)
+    # w4 penalty (Piecewise condition)
     delta_y = y - 1.0
-    du[5] = delta_y < 0.0 ? w4 * abs(delta_y) : 0.0
+    if delta_y < 0.0
+         du[5] = w4 * abs(delta_y)
+    else
+         du[5] = 0.0
 end
 
 function dde_history(p, t)
@@ -250,11 +259,8 @@ class EvolutionaryOptimizer(ABC):
                 csv.writer(file).writerow(['Round', 'Iterations_Run', 'Final_Cost_ITAE', 'Best_Kp', 'Best_Ki'])
 
         for current_round in range(1, self.n_rounds + 1):
-            print(f"\n{'=' * 40}\nSTARTING {self.algo_name} ROUND {current_round} OF {self.n_rounds}\n{'=' * 40}")
-
             # Subclass executes its specific algorithm here
             best_Kp, best_Ki, cost, iterations_run, cost_history = self.optimize_round(current_round)
-            print(f"   [RESULT] Best Params found: Kp = {best_Kp}, Ki = {best_Ki}")
             # Store and save data
             self.agg_history['iterations'].append(iterations_run)
             self.agg_history['costs'].append(cost)
