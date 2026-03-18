@@ -145,8 +145,8 @@ if __name__ == "__main__":
 
     total_cores = multiprocessing.cpu_count()
 
-    # Calculate 75% and ensure it's at least 1 core
-    num_cores = max(1, math.floor(total_cores * 0.75))
+    # Calculate 50% and ensure it's at least 1 core
+    num_cores = max(1, math.floor(total_cores * 0.5))
 
     START_POP = 10
     END_POP = 100

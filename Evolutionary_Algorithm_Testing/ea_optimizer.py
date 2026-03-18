@@ -58,6 +58,7 @@ function dde_system(du, u, h, p, t)
          du[5] = w4 * abs(delta_y)
     else
          du[5] = 0.0
+    end
 end
 
 function dde_history(p, t)
@@ -82,7 +83,7 @@ function run_dde_solver(Kp_ctrl, Ki_ctrl, K_plant, T_plant, delay, w1, w2, w4)
         )
 
         if sol.retcode != ReturnCode.Success
-            return (1e20, 1e20, 1e20, Float64[], Float64[])
+            return (9e9, 9e9, 9e9, Float64[], Float64[])
         end
 
         y_vals = [u[1] for u in sol.u]
@@ -96,7 +97,7 @@ function run_dde_solver(Kp_ctrl, Ki_ctrl, K_plant, T_plant, delay, w1, w2, w4)
 
         return (int_error, int_control, int_w4, y_vals, t_vals)
     catch e
-        return (1e20, 1e20, 1e20, Float64[], Float64[])
+        return (9e9, 9e9, 9e9, Float64[], Float64[])
     end
 end
 """)
@@ -109,8 +110,8 @@ def fast_fbest_diffeq(Kp_ctrl, Ki_ctrl, K_plant, T_plant, delay,
     )
 
     # Check for early failure flags
-    if int_error == 1e20 and len(y_vals_jl) == 0:
-        return 20.0
+    if int_error == 9e9 and len(y_vals_jl) == 0:
+        return 9.0
 
     y_vals = np.array(y_vals_jl)
     t_vals = np.array(t_vals_jl)
