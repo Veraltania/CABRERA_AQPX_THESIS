@@ -45,47 +45,45 @@ if __name__ == '__main__':
     tds_relay = TimeProportionalRelay(actuator=orchestrator, relay_num='2', window_secs=1800)
     tds_relay.start()
 
-    do_controller_configs = [
-        ("DO-Day-Adaptive", AdaptiveTuningStrategy(),   datetime.time(0, 0, 0),  datetime.time(5, 59, 59)),
-        ("DO-Day-Fixed", StaticTuningStrategy(), datetime.time(6, 0, 0),  datetime.time(11, 59, 59)),
-        ("DO-Evening-Adaptive",   AdaptiveTuningStrategy(),   datetime.time(12, 0, 0), datetime.time(17, 59, 59)),
-        ("DO-Evening-Fixed",  StaticTuningStrategy(),   datetime.time(18, 0, 0), datetime.time(23, 59, 59)),
+    # 1. Define the daily schedules and their paired strategies
+    do_schedules = [
+        (DailyTimeSchedule(datetime.time(0, 0, 0), datetime.time(5, 59, 59)), AdaptiveTuningStrategy()),
+        (DailyTimeSchedule(datetime.time(6, 0, 0), datetime.time(11, 59, 59)), StaticTuningStrategy()),
+        (DailyTimeSchedule(datetime.time(12, 0, 0), datetime.time(17, 59, 59)), AdaptiveTuningStrategy()),
+        (DailyTimeSchedule(datetime.time(18, 0, 0), datetime.time(23, 59, 59)), StaticTuningStrategy())
     ]
 
-    tds_controller_configs = [
-        ("TDS-Day-Adaptive", AdaptiveTuningStrategy(),   datetime.time(0, 0, 0),  datetime.time(5, 59, 59)),
-        ("TDS-Day-Fixed", StaticTuningStrategy(), datetime.time(6, 0, 0),  datetime.time(11, 59, 59)),
-        ("TDS-Evening-Adaptive",   AdaptiveTuningStrategy(),   datetime.time(12, 0, 0), datetime.time(17, 59, 59)),
-        ("TDS-Evening-Fixed",  StaticTuningStrategy(),   datetime.time(18, 0, 0), datetime.time(23, 59, 59)),
+    tds_schedules = [
+        (DailyTimeSchedule(datetime.time(0, 0, 0), datetime.time(5, 59, 59)), AdaptiveTuningStrategy()),
+        (DailyTimeSchedule(datetime.time(6, 0, 0), datetime.time(11, 59, 59)), StaticTuningStrategy()),
+        (DailyTimeSchedule(datetime.time(12, 0, 0), datetime.time(17, 59, 59)), AdaptiveTuningStrategy()),
+        (DailyTimeSchedule(datetime.time(18, 0, 0), datetime.time(23, 59, 59)), StaticTuningStrategy())
     ]
 
-    # Generate the controllers dynamically
-    active_controllers = []
-    for name, strategy, start, end in do_controller_configs:
-        controller = DOController(
-            name=name,
-            setpoint=6.0,
-            strategy=strategy,
-            schedule=DailyTimeSchedule(start, end),
-            actuator=do_relay
-        )
-        active_controllers.append(controller)
+    # 2. Create the Strategy Managers
+    do_strategy_manager = TimeBasedStrategyManager(do_schedules)
+    tds_strategy_manager = TimeBasedStrategyManager(tds_schedules)
 
-    for name, strategy, start, end in tds_controller_configs:
-        controller = TDSController(
-            name=name,
-            setpoint=220,
-            strategy=strategy,
-            schedule=DailyTimeSchedule(start, end),
-            actuator=tds_relay
-        )
-        active_controllers.append(controller)
-        
-    # Inject the list into the system
+    # 3. Instantiate exactly ONE controller per actuator
+    do_controller = DOController(
+        name="DO-Master-Controller",
+        setpoint=6.0,
+        strategy_manager=do_strategy_manager,
+        actuator=do_relay
+    )
+
+    tds_controller = TDSController(
+        name="TDS-Master-Controller",
+        setpoint=220,
+        strategy_manager=tds_strategy_manager,
+        actuator=tds_relay
+    )
+
+    # Inject the streamlined list into the system
     system = AquaponicsSystem(
-        controllers=active_controllers, 
-        broker="localhost", 
+        controllers=[do_controller, tds_controller],
+        broker="localhost",
         port=1883
     )
-        
+
     system.run()

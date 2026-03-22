@@ -82,9 +82,10 @@ class AdaptiveTuningStrategy(TuningStrategy):
             self.itae_current_window = 0.0
             self.window_timer = 0.0
 
+
 class StaticTuningStrategy(TuningStrategy):
     def load_state(self, controller, log_file):
-        """Reads the CSV file. Loads tuning parameters from the FIRST row, but integral state from the LAST row."""
+        """Reads the CSV file and loads BOTH integral state and parameters from the LAST row."""
         if not os.path.exists(log_file):
             print(f"[{controller.name}-Static] No state file found. Starting fresh.")
             return
@@ -92,31 +93,41 @@ class StaticTuningStrategy(TuningStrategy):
         try:
             with open(log_file, 'r') as f:
                 reader = csv.DictReader(f)
-                first_row = None
                 last_row = None
-                
+
                 for row in reader:
-                    if first_row is None:
-                        first_row = row
                     last_row = row
-                
-                # 1. Reload PI State from LAST row (so control signal doesn't jump on restart)
+
                 if last_row:
+                    # 1. Reload PI State to prevent control signal jumps
                     controller.integral_sum = float(last_row.get('integral_sum', 0.0))
                     controller.last_error = float(last_row.get('error', 0.0))
 
-                # 2. Reload Tuning Parameters from FIRST row (enforcing static rules)
-                if first_row:
-                    controller.kp = float(first_row.get('kp', controller.kp))
-                    controller.ki = float(first_row.get('ki', controller.ki))
-                    controller.foptd_gain = float(first_row.get('foptd_gain', controller.foptd_gain))
-                    controller.foptd_tau = float(first_row.get('foptd_tau', controller.foptd_tau))
-                    controller.foptd_delay = float(first_row.get('foptd_delay', controller.foptd_delay))
-                    
-                    print(f"[{controller.name}-Static] Resumed. Locked to Initial Kp: {controller.kp:.3f}. Ki: {controller.ki:.3f}")
+                    # 2. Reload Tuning Parameters from LAST row to freeze adaptive values
+                    controller.kp = float(last_row.get('kp', controller.kp))
+                    controller.ki = float(last_row.get('ki', controller.ki))
+                    controller.foptd_gain = float(last_row.get('foptd_gain', controller.foptd_gain))
+                    controller.foptd_tau = float(last_row.get('foptd_tau', controller.foptd_tau))
+                    controller.foptd_delay = float(last_row.get('foptd_delay', controller.foptd_delay))
+
+                    print(
+                        f"[{controller.name}-Static] Resumed. Locked to Last Adaptive Kp: {controller.kp:.3f}. Ki: {controller.ki:.3f}")
         except Exception as e:
             print(f"[{controller.name}-Static] Error reading state file: {e}. Starting fresh.")
 
     def evaluate_performance(self, controller, error, dt):
         """Static strategy does not tune, so it does nothing here."""
         pass
+
+class TimeBasedStrategyManager:
+    def __init__(self, schedule_configs):
+        # Expects a list of tuples: (SchedulePolicy, TuningStrategy)
+        self.schedule_configs = schedule_configs
+        self.current_strategy = None
+
+    def get_active_strategy(self):
+        """Returns the strategy that should be active right now."""
+        for schedule, strategy in self.schedule_configs:
+            if schedule.is_active():
+                return strategy
+        return None

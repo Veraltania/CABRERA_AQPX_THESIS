@@ -12,13 +12,11 @@ from Hardware_Pipeline.relay_pwm import TimeProportionalRelay
 from Transfer_Function_Modeling.response_modeler import analyze_response
 
 class ParameterController(ABC):
-    def __init__(self, name: str, setpoint: float, strategy: TuningStrategy,
-                 schedule: SchedulePolicy, actuator,
+    def __init__(self, name: str, setpoint: float, strategy_manager, actuator,
                  initial_kp, initial_ki, init_gain=1.0, init_tau=1.0, init_delay=0.0):
         self.name = name
         self.setpoint = setpoint
-        self.strategy = strategy
-        self.schedule = schedule
+        self.strategy_manager = strategy_manager
         self.actuator = actuator
 
         # Tuning Parameters
@@ -42,6 +40,7 @@ class ParameterController(ABC):
         self.retuning_file = None
         self.target_column = None
         self.retuning_folder = f"retuning_logs/{self.name.lower().replace(' ', '_')}"
+        self.current_process_value = 0.0
 
         # Load previous state upon initialization using the strategy
         self._load_previous_state()
@@ -83,8 +82,9 @@ class ParameterController(ABC):
         print(f"[{self.name}] Retuning session closed. File: {self.retuning_file}")
 
     def _load_previous_state(self):
-        """Delegates state loading to the injected strategy."""
-        self.strategy.load_state(self, self.log_file)
+        """Delegates state loading to the currently active strategy."""
+        if self.current_strategy:
+            self.current_strategy.load_state(self, self.log_file)
 
     def _log_current_state(self, current_val, error, pi_output):
         """Logs current state, including watchdog variables."""
@@ -92,12 +92,12 @@ class ParameterController(ABC):
 
         try:
             with open(self.log_file, 'a', newline='') as f:
-                fieldnames = [
+                # ... same fieldnames ...
+                writer = csv.DictWriter(f, fieldnames=[
                     'timestamp', 'setpoint', 'current_val', 'error', 'integral_sum', 'pi_output',
                     'kp', 'ki', 'foptd_gain', 'foptd_tau', 'foptd_delay',
                     'itae_current_window', 'itae_previous_window', 'window_timer'
-                ]
-                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                ])
 
                 if not file_exists:
                     writer.writeheader()
@@ -114,22 +114,37 @@ class ParameterController(ABC):
                     'foptd_gain': self.foptd_gain,
                     'foptd_tau': self.foptd_tau,
                     'foptd_delay': self.foptd_delay,
-                    'itae_current_window': getattr(self.strategy, 'itae_current_window', 0.0),
-                    'itae_previous_window': getattr(self.strategy, 'itae_current_window', 0.0),
-                    'window_timer': getattr(self.strategy, 'window_timer', 0.0)
+                    # Make sure to pull from current_strategy, not strategy!
+                    'itae_current_window': getattr(self.current_strategy, 'itae_current_window', 0.0),
+                    'itae_previous_window': getattr(self.current_strategy, 'itae_previous_window', 0.0),
+                    'window_timer': getattr(self.current_strategy, 'window_timer', 0.0)
                 })
         except Exception as e:
             print(f"[{self.name}] Failed to write to log file: {e}")
 
     def is_active(self) -> bool:
-        return self.schedule.is_active()
+        """Controller is active if the manager returns a valid strategy for the current time."""
+        return self.strategy_manager.get_active_strategy() is not None
+
+    def _check_and_update_strategy(self):
+        """Checks if the time block changed and swaps the strategy dynamically."""
+        new_strategy = self.strategy_manager.get_active_strategy()
+        if new_strategy and type(new_strategy) != type(self.current_strategy):
+            print(
+                f"[{self.name}] Time block shift: Swapping strategy from {type(self.current_strategy).__name__ if self.current_strategy else 'None'} to {type(new_strategy).__name__}")
+            self.current_strategy = new_strategy
 
     def calculate_pi(self, current_val):
         """Clean, simplified calculation using hardcoded 5-second intervals."""
+        # 1. Check if we need to swap strategies before calculating!
+        self._check_and_update_strategy()
+
+        self.current_process_value = current_val
         error = self.setpoint - current_val
 
-        # Delegate performance evaluation and watchdog checks to the strategy
-        self.strategy.evaluate_performance(self, error, self.dt)
+        # 2. Delegate performance evaluation to the CURRENT strategy
+        if self.current_strategy:
+            self.current_strategy.evaluate_performance(self, error, self.dt)
 
         # Standard PI Calculation
         p_term = self.kp * error
@@ -163,52 +178,95 @@ class ParameterController(ABC):
 
     def retune(self):
         def retune_worker():
-            target_col = self.target_column
+            # 1. Setup the step test
             old_setpoint = self.setpoint
-            self.setpoint = old_setpoint * 1.1
-            retuning_time = self.foptd_delay + self.foptd_tau * 3
+            step_size = old_setpoint * 0.10 if old_setpoint != 0 else 1.0  # 10% step
+            new_setpoint = old_setpoint + step_size
 
-            step_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            # collect data
-            time.sleep(retuning_time)
+            # Start logging if not already started
+            if not self.is_retuning:
+                self.start_retuning_session(self.target_column)
 
-            end_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            self.setpoint = new_setpoint
+
+            step_start_time = time.time()
+            step_time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            print(f"[{self.name}] Step test started. Setpoint: {old_setpoint} -> {new_setpoint:.2f}")
+
+            # 2. Wait for system to reach the new setpoint (Rise Time detection)
+            # We define "reached" as entering a 5% tolerance band of the step size
+            tolerance = abs(step_size) * 0.05
+            rise_time = 0
+
+            # Optional: Add a timeout (e.g., 3600 seconds) to prevent infinite loops if the system fails
+            max_wait_time = 3600
+
+            while True:
+                current_error = abs(self.current_process_value - new_setpoint)
+
+                # Check if it reached steady state / hit the new setpoint
+                if current_error <= tolerance:
+                    rise_time = time.time() - step_start_time
+                    break
+
+                # Timeout safety check
+                if (time.time() - step_start_time) > max_wait_time:
+                    print(f"[{self.name}] Retune timeout: System never reached the new setpoint.")
+                    self.setpoint = old_setpoint
+                    self.stop_retuning_session()
+                    return
+
+                time.sleep(self.dt)  # Poll at the system's dt interval
+
+            print(f"[{self.name}] Rise time: {rise_time:.2f}s. Recording for additional {rise_time * 3:.2f}s.")
+
+            # 3. Record for 3x the detected rise time
+            time.sleep(rise_time * 3)
+
+            # 4. Finish and Analyze
+            end_time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             self.stop_retuning_session()
 
-            params = analyze_response(
-                file_paths=[self.retuning_file],
-                start_step=step_time,
-                end_step=end_time,
-                target_column=target_col,
-                window_seconds=60,
-                tf_name=f"{self.name}_FOPTD_{step_time}_{end_time}",
-                t_step_time=step_time,
-                delta_u=self.setpoint - old_setpoint  # setpoint jump
-            )
+            try:
+                params = analyze_response(
+                    file_paths=[self.retuning_file],
+                    start_step=step_time_str,
+                    end_step=end_time_str,
+                    target_column=self.target_column,
+                    window_seconds=60,
+                    tf_name=f"{self.name}_FOPTD_{step_time_str}_{end_time_str}",
+                    t_step_time=step_time_str,
+                    delta_u=step_size  # step size used
+                )
 
-            # update transfer function
-            self.foptd_gain = params['K']
-            self.foptd_tau = params['tau']
-            self.foptd_delay = params['theta']
+                # update transfer function
+                self.foptd_gain = params['K']
+                self.foptd_tau = params['tau']
+                self.foptd_delay = params['theta']
+                print(
+                    f"[{self.name}] Tuning updated! K: {self.foptd_gain:.2f}, Tau: {self.foptd_tau:.2f}, Delay: {self.foptd_delay:.2f}")
 
-            # restore original setpoint
-            self.setpoint = old_setpoint
+            except Exception as e:
+                print(f"[{self.name}] Response analysis failed: {e}")
 
-        thread = threading.Thread(target=retune_worker)
+            finally:
+                # 5. Restore original setpoint
+                self.setpoint = old_setpoint
+                print(f"[{self.name}] Restored original setpoint to {self.setpoint}")
+
+        # Execute as a daemon thread so it doesn't block the main control loop
+        thread = threading.Thread(target=retune_worker, daemon=True)
         thread.start()
 
     @abstractmethod
     def process(self, data):
         pass
 
-
 class DOController(ParameterController):
-    def __init__(self, name: str, strategy: TuningStrategy,
-                 schedule: SchedulePolicy, relay_pwm: TimeProportionalRelay, actuator):
+    def __init__(self, name: str, strategy_manager, actuator):
         super().__init__(name=name,
                          setpoint=6.0,
-                         strategy=strategy,
-                         schedule=schedule,
+                         strategy_manager=strategy_manager,
                          actuator=actuator,
                          initial_kp=0.7,
                          initial_ki=0.001,
@@ -234,11 +292,10 @@ class DOController(ParameterController):
             self.actuator.set_duty_cycle(1.0) # failsafe ON
 
 class TDSController(ParameterController):
-    def __init__(self, name: str, strategy: TuningStrategy, schedule: SchedulePolicy, actuator):
+    def __init__(self, name: str, strategy_manager, actuator):
         super().__init__(name=name,
                          setpoint=100,
-                         strategy=strategy,
-                         schedule=schedule,
+                         strategy_manager = strategy_manager,
                          actuator=actuator,
                          initial_kp=0.7,
                          initial_ki=0.001,
