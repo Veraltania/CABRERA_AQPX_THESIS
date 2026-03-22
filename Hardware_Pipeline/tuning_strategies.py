@@ -17,7 +17,6 @@ class TuningStrategy(ABC):
         """Defines if/when the controller should trigger a retune."""
         pass
 
-
 class AdaptiveTuningStrategy(TuningStrategy):
     def __init__(self, window_duration=1800):  # monitor for 30 minutes / 1800 seconds
         # Watchdog variables for the tuning strategy
@@ -26,8 +25,7 @@ class AdaptiveTuningStrategy(TuningStrategy):
         self.itae_current_window = 0.0
         self.itae_previous_window = 0.0
 
-        # BUG FIX 1: Track absolute running time for correct ITAE (Integral of Time-weighted Absolute Error)
-        self.total_running_time = 0.0
+        # FIX: Removed self.total_running_time to prevent infinite ITAE growth
 
     def load_state(self, controller, log_file):
         """Reads the CSV file and reloads the last tuning parameters and PI state."""
@@ -54,13 +52,12 @@ class AdaptiveTuningStrategy(TuningStrategy):
                     controller.foptd_tau = float(last_row.get('foptd_tau', controller.foptd_tau))
                     controller.foptd_delay = float(last_row.get('foptd_delay', controller.foptd_delay))
 
-                    # Reload Watchdog state (Change from controller. to self.)
+                    # Reload Watchdog state
                     self.itae_current_window = float(last_row.get('itae_current_window', 0.0))
                     self.itae_previous_window = float(last_row.get('itae_previous_window', 0.0))
                     self.window_timer = float(last_row.get('window_timer', 0.0))
 
-                    # Load absolute time if present in CSV, fallback to window_timer to prevent breaking old logs
-                    self.total_running_time = float(last_row.get('total_running_time', self.window_timer))
+                    # FIX: Removed the load attempt for total_running_time since it's no longer used
 
                     print(f"[{controller.name}-Adaptive] Resumed. Kp: {controller.kp:.3f}. Ki: {controller.ki:.3f}")
         except Exception as e:
@@ -68,19 +65,19 @@ class AdaptiveTuningStrategy(TuningStrategy):
 
     def evaluate_performance(self, controller, error, dt):
         """Evaluates the window for a 5% ITAE shift."""
-        # BUG FIX 1 Continued: Increment timers first, and use absolute running time
-        self.total_running_time += dt
+        # Increment timer
         self.window_timer += dt
 
-        # Use total continuous time to weight errors, ensuring early window errors aren't ignored
-        self.itae_current_window += self.total_running_time * abs(error) * dt
+        # FIX: Use window_timer to weight errors. This ensures we compare apples to apples
+        # when evaluating the current window against the previous window.
+        self.itae_current_window += self.window_timer * abs(error) * dt
 
         if self.window_timer >= self.window_duration:
             print(f"[{controller.name}-Adaptive] {self.window_duration}-Min Window Closed. \n")
             print(f"Current ITAE: {self.itae_current_window:.2f} \n")
             print(f"Prev ITAE: {self.itae_previous_window:.2f} \n")
 
-            # BUG FIX 2: Safely handle division by zero if system was perfectly at setpoint
+            # Safely handle division by zero if system was perfectly at setpoint
             if self.itae_previous_window > 0:
                 percent_change = abs(self.itae_current_window - self.itae_previous_window) / self.itae_previous_window
 
@@ -101,11 +98,10 @@ class AdaptiveTuningStrategy(TuningStrategy):
                 elif hasattr(controller, 'start_retuning_session'):
                     controller.start_retuning_session()
 
-            # Shift windows and reset timer. Notice total_running_time is NOT reset.
+            # Shift windows and reset timer.
             self.itae_previous_window = self.itae_current_window
             self.itae_current_window = 0.0
             self.window_timer = 0.0
-
 
 class StaticTuningStrategy(TuningStrategy):
     def load_state(self, controller, log_file):

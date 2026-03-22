@@ -45,9 +45,10 @@ class TimeProportionalRelay:
 
     def _pwm_loop(self):
         # Anchor point for our time window calculations
+        t_start = time.time()
 
         while self.running:
-            t_start = time.time()
+
             duty = self.duty_cycle
 
             # reduce chatter: if the duty cycle is at the extremes, lock the state
