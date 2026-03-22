@@ -39,6 +39,7 @@ class ParameterController(ABC):
         self.retuning_folder = f"retuning_logs/{self.name.lower().replace(' ', '_')}"
         self.current_process_value = 0.0
         self.current_strategy = self.strategy_manager.get_active_strategy()
+        self.retune_thread_active = False
 
         # Load previous state upon initialization using the strategy
         self._load_previous_state()
@@ -179,52 +180,60 @@ class ParameterController(ABC):
             f"[{self.name}] Active Plant Updated  -> K: {self.foptd_gain:.2f}, Tau: {self.foptd_tau:.2f}, Delay: {self.foptd_delay:.2f}")
 
     def retune(self):
+        # 1. Strict Concurrency Check
+        if getattr(self, 'retune_thread_active', False):
+            print(f"[{self.name}] Retune already in progress. Ignoring duplicate trigger.")
+            return
+
+        self.retune_thread_active = True
+
         def retune_worker():
-            # 1. Setup the step test
-            old_setpoint = self.setpoint
-            step_size = old_setpoint * 0.10 if old_setpoint != 0 else 1.0  # 10% step
-            new_setpoint = old_setpoint + step_size
-
-            # Start logging if not already started
-            if not self.is_retuning:
-                self.start_retuning_session(self.target_column)
-
-            self.setpoint = new_setpoint
-
-            step_start_time = time.time()
-            step_time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            print(f"[{self.name}] Step test started. Setpoint: {old_setpoint} -> {new_setpoint:.2f}")
-
-            # 2. Wait for system to reach the new setpoint (Rise Time detection)
-            tolerance = abs(step_size) * 0.05
-            rise_time = 0
-            max_wait_time = 3600
-
-            while True:
-                current_error = abs(self.current_process_value - new_setpoint)
-
-                if current_error <= tolerance:
-                    rise_time = time.time() - step_start_time
-                    break
-
-                if (time.time() - step_start_time) > max_wait_time:
-                    print(f"[{self.name}] Retune timeout: System never reached the new setpoint.")
-                    self.setpoint = old_setpoint
-                    self.stop_retuning_session()
-                    return
-
-                time.sleep(self.dt)
-
-            print(f"[{self.name}] Rise time: {rise_time:.2f}s. Recording for additional {rise_time * 3:.2f}s.")
-
-            # 3. Record for 3x the detected rise time
-            time.sleep(rise_time * 3)
-
-            # 4. Finish and Analyze
-            end_time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            self.stop_retuning_session()
-
             try:
+                # 1. Setup the closed-loop setpoint step test
+                old_setpoint = self.setpoint
+                step_size = old_setpoint * 0.10 if old_setpoint != 0 else 1.0  # 10% step
+                new_setpoint = old_setpoint + step_size
+
+                # Start logging if not already started
+                if not self.is_retuning:
+                    self.start_retuning_session(self.target_column)
+
+                self.setpoint = new_setpoint
+
+                step_start_time = time.time()
+                step_time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                print(
+                    f"[{self.name}] Closed-loop setpoint test started. Setpoint: {old_setpoint} -> {new_setpoint:.2f}")
+
+                # 2. Wait for system to reach the new setpoint (Rise Time detection)
+                tolerance = abs(step_size) * 0.05
+                rise_time = 0
+                max_wait_time = 3600
+
+                while True:
+                    current_error = abs(self.current_process_value - new_setpoint)
+
+                    if current_error <= tolerance:
+                        rise_time = time.time() - step_start_time
+                        break
+
+                    if (time.time() - step_start_time) > max_wait_time:
+                        print(f"[{self.name}] Retune timeout: System never reached the new setpoint.")
+                        self.setpoint = old_setpoint
+                        self.stop_retuning_session()
+                        return
+
+                    time.sleep(self.dt)
+
+                print(f"[{self.name}] Rise time: {rise_time:.2f}s. Recording for additional {rise_time * 3:.2f}s.")
+
+                # 3. Record for 3x the detected rise time
+                time.sleep(rise_time * 3)
+
+                # 4. Finish and Analyze
+                end_time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                self.stop_retuning_session()
+
                 # --- Step 4a: Extract FOPTD Parameters ---
                 params = analyze_response(
                     file_paths=[self.retuning_file],
@@ -234,7 +243,7 @@ class ParameterController(ABC):
                     window_seconds=60,
                     tf_name=f"{self.name}_FOPTD",
                     t_step_time=step_time_str,
-                    delta_u=step_size
+                    delta_u=step_size  # Passes the setpoint step_size to your closed-loop modeler
                 )
 
                 extracted_gain = params['K']
@@ -279,18 +288,14 @@ class ParameterController(ABC):
                 print(f"[{self.name}] Retuning process failed: {e}")
 
             finally:
-                # 5. Restore original setpoint
+                # 5. Restore original setpoint AND release the concurrency lock
                 self.setpoint = old_setpoint
-                print(f"[{self.name}] Restored original setpoint to {self.setpoint}")
+                self.retune_thread_active = False
+                print(f"[{self.name}] Restored original setpoint to {self.setpoint} and released retuning lock.")
 
         # Execute as a daemon thread so it doesn't block the main control loop
         thread = threading.Thread(target=retune_worker, daemon=True)
         thread.start()
-
-    @abstractmethod
-    def process(self, data):
-        pass
-
 
 class DOController(ParameterController):
     def __init__(self, name: str, strategy_manager, actuator):

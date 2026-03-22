@@ -47,19 +47,25 @@ class TimeProportionalRelay:
         # Anchor point for our time window calculations
         t_start = time.time()
 
+        # Latch the duty cycle for the first window
+        latched_duty = self.duty_cycle
+
         while self.running:
+            # Calculate where we currently are in the rotating time window
+            elapsed_in_window = (time.time() - t_start) % self.window_secs
 
-            duty = self.duty_cycle
+            # If we are at the very beginning of a new window, latch the latest duty cycle
+            # We use < update_interval to catch the rollover safely
+            if elapsed_in_window < self.update_interval:
+                latched_duty = self.duty_cycle
 
-            # reduce chatter: if the duty cycle is at the extremes, lock the state
-            if duty <= 0.1:
+            # Reduce chatter: if the duty cycle is at the extremes, lock the state
+            if latched_duty <= 0.1:
                 self._set_state('OFF')
-            elif duty >= 0.9:
+            elif latched_duty >= 0.9:
                 self._set_state('ON')
             else:
-                # Calculate where we currently are in the rotating time window
-                elapsed_in_window = (time.time() - t_start) % self.window_secs
-                on_time = duty * self.window_secs
+                on_time = latched_duty * self.window_secs
 
                 # If we are within the 'ON' portion of the window, turn on. Otherwise, off.
                 if elapsed_in_window < on_time:
@@ -67,5 +73,5 @@ class TimeProportionalRelay:
                 else:
                     self._set_state('OFF')
 
-            # Sleep for a short interval so we are highly responsive to duty cycle changes
+            # Sleep to prevent CPU hogging and align with our update interval
             time.sleep(self.update_interval)
