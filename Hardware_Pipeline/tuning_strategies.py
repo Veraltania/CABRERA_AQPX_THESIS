@@ -71,14 +71,14 @@ class AdaptiveTuningStrategy(TuningStrategy):
             
             # Avoid division by zero on the very first 30-minute run
             if self.itae_previous_window > 0:
-                percent_change = abs(self.itae_current_window - self.itae_previous_window) / controller.itae_previous_window
+                percent_change = abs(self.itae_current_window - self.itae_previous_window) / self.itae_previous_window
                 
                 if percent_change >= 0.05:
                     print(f"[{controller.name}-Adaptive] ITAE shift of {percent_change*100:.1f}% detected! Triggering EA retune...")
                     controller.retune()
             
             # Shift windows and reset timer
-            self.itae_previous_window = controller.itae_current_window
+            self.itae_previous_window = self.itae_current_window
             self.itae_current_window = 0.0
             self.window_timer = 0.0
 

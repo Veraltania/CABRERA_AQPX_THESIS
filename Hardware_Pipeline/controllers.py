@@ -37,7 +37,7 @@ class ParameterController(ABC):
         self.target_column = None
         self.retuning_folder = f"retuning_logs/{self.name.lower().replace(' ', '_')}"
         self.current_process_value = 0.0
-        self.current_strategy = None
+        self.current_strategy = self.strategy_manager.get_active_strategy()
 
         # Load previous state upon initialization using the strategy
         self._load_previous_state()
