@@ -5,10 +5,6 @@ from abc import ABC, abstractmethod
 import threading
 import time
 
-from Hardware_Pipeline.tuning_strategies import TuningStrategy
-from Hardware_Pipeline.schedule_policies import SchedulePolicy
-from Hardware_Pipeline.relay_pwm import TimeProportionalRelay
-
 from Transfer_Function_Modeling.response_modeler import analyze_response
 
 class ParameterController(ABC):
@@ -41,6 +37,7 @@ class ParameterController(ABC):
         self.target_column = None
         self.retuning_folder = f"retuning_logs/{self.name.lower().replace(' ', '_')}"
         self.current_process_value = 0.0
+        self.current_strategy = None
 
         # Load previous state upon initialization using the strategy
         self._load_previous_state()
