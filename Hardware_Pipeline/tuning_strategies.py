@@ -91,11 +91,7 @@ class AdaptiveTuningStrategy(TuningStrategy):
                             f"[{controller.name}-Adaptive] ITAE shift of {percent_change * 100:.1f}% detected! Triggering EA retune...\n")
                         if hasattr(controller, 'retune'):
                             controller.retune()
-
-                    # Fallback: If the previous window was near-zero, but the new window spikes severely
-                    elif self.itae_current_window > max(100.0, self.noise_floor_itae * 2):
-
-                elif self.itae_current_window > 1.0:
+                elif self.itae_current_window > max(100.0, self.noise_floor_itae * 2):
                     print(f"[{controller.name}-Adaptive] Error emerged from ideal state! Triggering EA retune...\n")
                     if hasattr(controller, 'retune'):
                         controller.retune()
