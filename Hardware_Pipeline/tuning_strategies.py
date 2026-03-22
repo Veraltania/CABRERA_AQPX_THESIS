@@ -17,13 +17,17 @@ class TuningStrategy(ABC):
         """Defines if/when the controller should trigger a retune."""
         pass
 
+
 class AdaptiveTuningStrategy(TuningStrategy):
-    def __init__(self, window_duration=1800): # monitor for 30 minutes / 1800 seconds
+    def __init__(self, window_duration=1800):  # monitor for 30 minutes / 1800 seconds
         # Watchdog variables for the tuning strategy
         self.window_duration = window_duration
         self.window_timer = 0.0
         self.itae_current_window = 0.0
         self.itae_previous_window = 0.0
+
+        # BUG FIX 1: Track absolute running time for correct ITAE (Integral of Time-weighted Absolute Error)
+        self.total_running_time = 0.0
 
     def load_state(self, controller, log_file):
         """Reads the CSV file and reloads the last tuning parameters and PI state."""
@@ -36,13 +40,13 @@ class AdaptiveTuningStrategy(TuningStrategy):
                 reader = csv.DictReader(f)
                 last_row = None
                 for row in reader:
-                    last_row = row 
-                
+                    last_row = row
+
                 if last_row:
                     # Reload PI State
                     controller.integral_sum = float(last_row.get('integral_sum', 0.0))
                     controller.last_error = float(last_row.get('error', 0.0))
-                    
+
                     # Reload Adaptive Parameters (latest EA tuning)
                     controller.kp = float(last_row.get('kp', controller.kp))
                     controller.ki = float(last_row.get('ki', controller.ki))
@@ -54,30 +58,50 @@ class AdaptiveTuningStrategy(TuningStrategy):
                     self.itae_current_window = float(last_row.get('itae_current_window', 0.0))
                     self.itae_previous_window = float(last_row.get('itae_previous_window', 0.0))
                     self.window_timer = float(last_row.get('window_timer', 0.0))
-                    
+
+                    # Load absolute time if present in CSV, fallback to window_timer to prevent breaking old logs
+                    self.total_running_time = float(last_row.get('total_running_time', self.window_timer))
+
                     print(f"[{controller.name}-Adaptive] Resumed. Kp: {controller.kp:.3f}. Ki: {controller.ki:.3f}")
         except Exception as e:
             print(f"[{controller.name}-Adaptive] Error reading state file: {e}. Starting fresh.")
 
     def evaluate_performance(self, controller, error, dt):
         """Evaluates the window for a 5% ITAE shift."""
-        self.itae_current_window += self.window_timer * abs(error) * dt
+        # BUG FIX 1 Continued: Increment timers first, and use absolute running time
+        self.total_running_time += dt
         self.window_timer += dt
+
+        # Use total continuous time to weight errors, ensuring early window errors aren't ignored
+        self.itae_current_window += self.total_running_time * abs(error) * dt
 
         if self.window_timer >= self.window_duration:
             print(f"[{controller.name}-Adaptive] {self.window_duration}-Min Window Closed. \n")
             print(f"Current ITAE: {self.itae_current_window:.2f} \n")
             print(f"Prev ITAE: {self.itae_previous_window:.2f} \n")
-            
-            # Avoid division by zero on the very first 30-minute run
+
+            # BUG FIX 2: Safely handle division by zero if system was perfectly at setpoint
             if self.itae_previous_window > 0:
                 percent_change = abs(self.itae_current_window - self.itae_previous_window) / self.itae_previous_window
-                
+
                 if percent_change >= 0.05:
-                    print(f"[{controller.name}-Adaptive] ITAE shift of {percent_change*100:.1f}% detected! Triggering EA retune...")
+                    print(
+                        f"[{controller.name}-Adaptive] ITAE shift of {percent_change * 100:.1f}% detected! Triggering EA retune...")
+
+                    # Compatibility safety fallback
+                    if hasattr(controller, 'retune'):
+                        controller.retune()
+                    elif hasattr(controller, 'start_retuning_session'):
+                        controller.start_retuning_session()
+
+            elif self.itae_current_window > 1.0:  # Arbitrary small threshold indicating error emerged from 0
+                print(f"[{controller.name}-Adaptive] Error emerged from ideal state! Triggering EA retune...")
+                if hasattr(controller, 'retune'):
                     controller.retune()
-            
-            # Shift windows and reset timer
+                elif hasattr(controller, 'start_retuning_session'):
+                    controller.start_retuning_session()
+
+            # Shift windows and reset timer. Notice total_running_time is NOT reset.
             self.itae_previous_window = self.itae_current_window
             self.itae_current_window = 0.0
             self.window_timer = 0.0

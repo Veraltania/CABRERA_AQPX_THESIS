@@ -6,6 +6,7 @@ import threading
 import time
 
 from Transfer_Function_Modeling.response_modeler import analyze_response
+from Evolutionary_Algorithm_Testing.de.de_optimizer import DEOptimizer
 
 class ParameterController(ABC):
     def __init__(self, name: str, setpoint: float, strategy_manager, actuator,
@@ -89,7 +90,6 @@ class ParameterController(ABC):
 
         try:
             with open(self.log_file, 'a', newline='') as f:
-                # ... same fieldnames ...
                 writer = csv.DictWriter(f, fieldnames=[
                     'timestamp', 'setpoint', 'current_val', 'error', 'integral_sum', 'pi_output',
                     'kp', 'ki', 'foptd_gain', 'foptd_tau', 'foptd_delay',
@@ -111,7 +111,6 @@ class ParameterController(ABC):
                     'foptd_gain': self.foptd_gain,
                     'foptd_tau': self.foptd_tau,
                     'foptd_delay': self.foptd_delay,
-                    # Make sure to pull from current_strategy, not strategy!
                     'itae_current_window': getattr(self.current_strategy, 'itae_current_window', 0.0),
                     'itae_previous_window': getattr(self.current_strategy, 'itae_previous_window', 0.0),
                     'window_timer': getattr(self.current_strategy, 'window_timer', 0.0)
@@ -132,7 +131,7 @@ class ParameterController(ABC):
             self.current_strategy = new_strategy
 
     def calculate_pi(self, current_val):
-        """Clean, simplified calculation using hardcoded 5-second intervals."""
+        """Clean, simplified calculation using hardcoded intervals."""
         # 1. Check if we need to swap strategies before calculating!
         self._check_and_update_strategy()
 
@@ -169,9 +168,15 @@ class ParameterController(ABC):
         return pi_output
 
     def update_tuning_parameters(self, new_kp, new_ki, gain, tau, delay):
+        """Updates both PI gains and the underlying FOPTD model tracking parameters."""
         self.kp = new_kp
         self.ki = new_ki
-        print(f"[{self.name}] Retuned. New Kp: {self.kp:.3f}, Ki: {self.ki:.3f}")
+        self.foptd_gain = gain
+        self.foptd_tau = tau
+        self.foptd_delay = delay
+        print(f"[{self.name}] Active Tuning Updated -> Kp: {self.kp:.4f}, Ki: {self.ki:.4f}")
+        print(
+            f"[{self.name}] Active Plant Updated  -> K: {self.foptd_gain:.2f}, Tau: {self.foptd_tau:.2f}, Delay: {self.foptd_delay:.2f}")
 
     def retune(self):
         def retune_worker():
@@ -191,29 +196,24 @@ class ParameterController(ABC):
             print(f"[{self.name}] Step test started. Setpoint: {old_setpoint} -> {new_setpoint:.2f}")
 
             # 2. Wait for system to reach the new setpoint (Rise Time detection)
-            # We define "reached" as entering a 5% tolerance band of the step size
             tolerance = abs(step_size) * 0.05
             rise_time = 0
-
-            # Optional: Add a timeout (e.g., 3600 seconds) to prevent infinite loops if the system fails
             max_wait_time = 3600
 
             while True:
                 current_error = abs(self.current_process_value - new_setpoint)
 
-                # Check if it reached steady state / hit the new setpoint
                 if current_error <= tolerance:
                     rise_time = time.time() - step_start_time
                     break
 
-                # Timeout safety check
                 if (time.time() - step_start_time) > max_wait_time:
                     print(f"[{self.name}] Retune timeout: System never reached the new setpoint.")
                     self.setpoint = old_setpoint
                     self.stop_retuning_session()
                     return
 
-                time.sleep(self.dt)  # Poll at the system's dt interval
+                time.sleep(self.dt)
 
             print(f"[{self.name}] Rise time: {rise_time:.2f}s. Recording for additional {rise_time * 3:.2f}s.")
 
@@ -225,26 +225,58 @@ class ParameterController(ABC):
             self.stop_retuning_session()
 
             try:
+                # --- Step 4a: Extract FOPTD Parameters ---
                 params = analyze_response(
                     file_paths=[self.retuning_file],
                     start_step=step_time_str,
                     end_step=end_time_str,
                     target_column=self.target_column,
                     window_seconds=60,
-                    tf_name=f"{self.name}_FOPTD_{step_time_str}_{end_time_str}",
+                    tf_name=f"{self.name}_FOPTD",
                     t_step_time=step_time_str,
-                    delta_u=step_size  # step size used
+                    delta_u=step_size
                 )
 
-                # update transfer function
-                self.foptd_gain = params['K']
-                self.foptd_tau = params['tau']
-                self.foptd_delay = params['theta']
+                extracted_gain = params['K']
+                extracted_tau = params['tau']
+                extracted_delay = params['theta']
                 print(
-                    f"[{self.name}] Tuning updated! K: {self.foptd_gain:.2f}, Tau: {self.foptd_tau:.2f}, Delay: {self.foptd_delay:.2f}")
+                    f"[{self.name}] Plant modeled! K: {extracted_gain:.2f}, Tau: {extracted_tau:.2f}, Delay: {extracted_delay:.2f}")
+
+                # --- Step 4b: Setup Optimizer Environment ---
+                tf_params = {
+                    'tf_num': [extracted_gain],
+                    'tf_den': [extracted_tau],
+                    'computed_delay': extracted_delay,
+                    'is_reverse_acting': extracted_gain < 0,
+                    'max_kp': 20.0  # Safety fallback bound
+                }
+
+                de_config = {
+                    'population_size': 100,
+                    'max_iters': 30,
+                    'patience_limit': 10,
+                    'mutation': (0.5, 1.0),
+                    'recombination': 0.745,
+                    'strategy': 'best1bin',
+                    'n_rounds': 1,
+                    'output_folder': f"online_tuning_logs/{self.name.lower().replace(' ', '_')}"
+                }
+
+                # Run Differential Evolution
+                print(f"[{self.name}] Running Differential Evolution to optimize PI gains...")
+                optimizer = DEOptimizer(config=de_config, tf_params=tf_params)
+
+                # 1 round of optimization
+                best_Kp, best_Ki, cost, iterations_run, _ = optimizer.optimize_round(round_num=1)
+
+                print(f"[{self.name}] Optimization finished in {iterations_run} iterations. ITAE Cost: {cost:.4f}")
+
+                # Apply new parameters
+                self.update_tuning_parameters(best_Kp, best_Ki, extracted_gain, extracted_tau, extracted_delay)
 
             except Exception as e:
-                print(f"[{self.name}] Response analysis failed: {e}")
+                print(f"[{self.name}] Retuning process failed: {e}")
 
             finally:
                 # 5. Restore original setpoint
@@ -259,6 +291,7 @@ class ParameterController(ABC):
     def process(self, data):
         pass
 
+
 class DOController(ParameterController):
     def __init__(self, name: str, strategy_manager, actuator):
         super().__init__(name=name,
@@ -272,6 +305,8 @@ class DOController(ParameterController):
                          init_delay=0.5
                          )
 
+        self.target_column = "MCP_WQ_DO"
+
     def process(self, data):
         current_do = data.get('mcp_wq', {}).get('do')
         if current_do is not None:
@@ -281,18 +316,18 @@ class DOController(ParameterController):
             print(f"Target: {self.setpoint} \n")
             print(f"Control Signal: {pi_output:.2f} \n")
 
-            # update the background thread with the new duty cycle
             self.actuator.set_duty_cycle(pi_output)
 
         else:
             print(f"[{self.name} Controller] No DO data found in payload.")
-            self.actuator.set_duty_cycle(1.0) # failsafe ON
+            self.actuator.set_duty_cycle(1.0)  # failsafe ON
+
 
 class TDSController(ParameterController):
     def __init__(self, name: str, strategy_manager, actuator):
         super().__init__(name=name,
                          setpoint=100,
-                         strategy_manager = strategy_manager,
+                         strategy_manager=strategy_manager,
                          actuator=actuator,
                          initial_kp=0.7,
                          initial_ki=0.001,
@@ -300,6 +335,8 @@ class TDSController(ParameterController):
                          init_tau=1.0,
                          init_delay=0.5
                          )
+
+        self.target_column = "MCP_WQ_TDS"
 
     def process(self, data):
         current_tds = data.get('mcp_wq', {}).get('tds')
@@ -310,8 +347,7 @@ class TDSController(ParameterController):
             print(f"Setpoint: {self.setpoint} \n")
             print(f"Control Signal: {pi_output:.2f} \n")
 
-            # update the background thread with the new duty cycle
             self.actuator.set_duty_cycle(pi_output)
         else:
             print(f"[{self.name} Controller] No TDS data found in payload.")
-            self.actuator.set_duty_cycle(1.0) # failsafe ON
+            self.actuator.set_duty_cycle(1.0)  # failsafe ON
