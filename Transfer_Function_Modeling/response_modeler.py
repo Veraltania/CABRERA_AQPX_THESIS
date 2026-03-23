@@ -169,7 +169,7 @@ def analyze_response(file_paths, start_step, end_step, target_column, window_sec
     return {'K': K_opt, 'tau': tau_opt, 'theta': tau_d_opt, 'y0': y0}
 
 if __name__ == "__main__":
-    do_file = [r'D:\aqpx\Cabrera_Thesis_AQPX\Transfer_Function_Modeling\data\AQPX_data_log_2026-02-05.csv']
+    do_file = [r'D:\aqpx\Cabrera_Thesis_AQPX\Transfer_Function_Modeling\data\AQPX_data_log_2026-02-07.csv']
 
     base_data_path = r'D:\aqpx\Cabrera_Thesis_AQPX\Transfer_Function_Modeling\data'
     tds_files = [
@@ -179,14 +179,14 @@ if __name__ == "__main__":
         fr'{base_data_path}\AQPX_data_log_2026-02-12.csv'
     ]
 
-    tds_params = analyze_response(
+    do_params = analyze_response(
         file_paths=do_file,
-        start_step='2026-02-05 10:00:00',
-        end_step='2026-02-05 15:00:00',
+        start_step='2026-02-07 20:00:00',
+        end_step='2026-02-07 23:59:59',
         target_column='MCP_WQ_DO',
         window_seconds=60,
-        tf_name='DO_TF1',
-        t_step_time='2026-02-05 10:00:00',
+        tf_name='DO_TF3_NIGHTTIME',
+        t_step_time='2026-02-07 20:00:00',
         delta_u=1.0  # 1 to denote an ON/OFF state change, or standard magnitude
     )
 

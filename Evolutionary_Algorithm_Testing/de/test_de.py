@@ -7,7 +7,7 @@ from pathlib import Path
 
 # Custom local modules
 from Transfer_Function_Analysis.analyze_transfer_func_stability import define_transfer_func, define_guardrail_gain
-from Evolutionary_Algorithm_Testing.solver_engine import fast_fbest_diffeq  # Imported Julia DDE solver
+from Evolutionary_Algorithm_Testing.ea_optimizer import fast_fbest_diffeq  # Imported Julia DDE solver
 
 # --- 1. HELPER FUNCTIONS ---
 
@@ -89,10 +89,10 @@ def run_de_experiment(
         patience_limit=25,
         max_iters=200,
         improvement_tol=0.01, # Lowered for log scale
-        n_rounds=50,
+        n_rounds=1,
         output_folder="experiment_images_de",
-        tf_num=[-24.44],
-        tf_den=[84487.79, 1],
+        tf_num=[50.3969],
+        tf_den=[1629.7145, 1],
         tf_delay=0.5,
         tf_n_pade=2
 ):

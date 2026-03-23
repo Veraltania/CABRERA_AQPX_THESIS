@@ -186,38 +186,17 @@ if __name__ == "__main__":
 
     transfer_functions_to_run = [
         {
-            "base_dir": "results_population_sweep_do_tf1_daytime",
+            "base_dir": "results_population_sweep_do_tf1_nighttime",
             "tf_params": {
-                'tf_num': [51.39], 'tf_den': [1550.18, 1], 'tf_delay': 71.78,
-                'tf_n_pade': 2, 'computed_delay': 0.50, 'is_reverse_acting': False, 'max_kp': 100.0
-            }
-        },
-        {
-             "base_dir": "results_population_sweep_do_tf1_nighttime",
-             "tf_params": {
-                'tf_num': [92.76], 'tf_den': [2629.13, 1], 'tf_delay': 54.00,
-                'tf_n_pade': 2, 'computed_delay': 0.50, 'is_reverse_acting': False, 'max_kp': 100.0
-            }
-        },
-        {
-            "base_dir": "results_population_sweep_do_tf3_daytime",
-            "tf_params": {
-                'tf_num': [45.52], 'tf_den': [2654.54, 1], 'tf_delay': 0.50,
-                'tf_n_pade': 2, 'computed_delay': 0.50, 'is_reverse_acting': False, 'max_kp': 100.0
-            }
-        },
-        {
-             "base_dir": "results_population_sweep_do_tf3_nighttime",
-             "tf_params": {
-                'tf_num': [65.52], 'tf_den': [3620.37, 1], 'tf_delay': 1.0,
-                'tf_n_pade': 2, 'computed_delay': 0.50, 'is_reverse_acting': False, 'max_kp': 100.0
+                'tf_num': [86.7056], 'tf_den': [3287.0801, 1], 'tf_delay': 0.0,
+                'tf_n_pade': 2, 'computed_delay': 0.05, 'is_reverse_acting': False, 'max_kp': 100.0
             }
         }
     ]
 
     total_global_start_time = time.time()
     script_dir = Path(__file__).parent.resolve()
-    batch_dir = "BATCH_3"
+    batch_dir = "BATCH_4"
 
     with multiprocessing.Pool(processes=num_cores) as pool:
         for idx, tf_config in enumerate(transfer_functions_to_run):

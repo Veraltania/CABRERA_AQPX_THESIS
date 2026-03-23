@@ -24,6 +24,7 @@ class ParameterController(ABC):
         self.foptd_delay = init_delay
 
         self.log_file = f"{self.name.lower().replace(' ', '_')}_state.csv"
+        self.last_time = time.time()
         self.dt = 5.0
 
         # State Variables
@@ -132,8 +133,17 @@ class ParameterController(ABC):
             self.current_strategy = new_strategy
 
     def calculate_pi(self, current_val):
-        """Clean, simplified calculation using hardcoded intervals."""
-        # 1. Check if we need to swap strategies before calculating!
+        # 1. Check if we need to swap strategies before calculating.
+        current_time = time.time()
+        actual_dt = current_time - self.last_time
+
+        if actual_dt <= 0:
+            actual_dt = 1e-6  # prevent zero-division
+
+        self.dt = actual_dt
+
+        self.last_time = current_time
+
         self._check_and_update_strategy()
 
         self.current_process_value = current_val
