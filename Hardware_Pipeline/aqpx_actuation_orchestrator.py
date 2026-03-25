@@ -4,8 +4,8 @@ import threading
 class AqpxActuationOrchestrator:
     """Handles sending commands to the aquaponics hardware."""
     
-    VALID_RELAYS = ['1', '2', '3', '4']
-    VALID_STATES = ['ON', 'OFF']
+    VALID_RELAYS = ['1', '2', '3']
+    VALID_STATES = ['RESET', 'SET']
 
     def __init__(self, broker="localhost", port=1883, topic="aquaponics_commands"):
         self.broker = broker
@@ -36,7 +36,7 @@ class AqpxActuationOrchestrator:
             print(f"Error: Invalid relay '{relay_num}'. Must be one of {self.VALID_RELAYS}.")
             return
         if state not in self.VALID_STATES:
-            print(f"Error: Invalid state '{state}'. Must be 'ON' or 'OFF'.")
+            print(f"Error: Invalid state '{state}'. Must be 'RESET' or 'SET'.")
             return
             
         command_payload = f"RELAY{relay_num}_{state}"

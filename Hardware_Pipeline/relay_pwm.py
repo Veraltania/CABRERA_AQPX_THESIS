@@ -11,6 +11,10 @@ class TimeProportionalRelay:
         self.running = False
         self.thread = None
 
+        # custom definitions for ON and OFF
+        self.ON = "RESET"
+        self.OFF = "SET"
+
         # Track state to prevent spamming the MQTT broker with identical commands
         self.current_state = None
 
@@ -35,7 +39,7 @@ class TimeProportionalRelay:
             self.thread.join()
 
         # always set the pump / aerator ON as the safe state
-        self._set_state('ON')
+        self._set_state(self.ON)
 
     def _set_state(self, state: str):
         """Helper method to send a command ONLY if the state has changed."""
@@ -61,17 +65,17 @@ class TimeProportionalRelay:
 
             # Reduce chatter: if the duty cycle is at the extremes, lock the state
             if latched_duty <= 0.1:
-                self._set_state('OFF')
+                self._set_state(self.OFF)
             elif latched_duty >= 0.9:
-                self._set_state('ON')
+                self._set_state(self.ON)
             else:
                 on_time = latched_duty * self.window_secs
 
                 # If we are within the 'ON' portion of the window, turn on. Otherwise, off.
                 if elapsed_in_window < on_time:
-                    self._set_state('ON')
+                    self._set_state(self.ON)
                 else:
-                    self._set_state('OFF')
+                    self._set_state(self.OFF)
 
             # Sleep to prevent CPU hogging and align with our update interval
             time.sleep(self.update_interval)
