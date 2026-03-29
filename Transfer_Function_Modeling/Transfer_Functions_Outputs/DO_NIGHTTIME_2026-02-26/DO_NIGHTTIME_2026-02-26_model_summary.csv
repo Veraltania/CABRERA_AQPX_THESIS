@@ -1,0 +1,6 @@
+Model,IAE_Score,R2_Score,Optimal_Parameters
+FOPTD,2257.623248,0.967576825,"[np.float64(3.1048), np.float64(2518.9213), np.float64(1446.0142)]"
+SOPTD,2164.031251,0.968704585,"[np.float64(3.0499), np.float64(1664.2767), np.float64(1185.3609), np.float64(865.7024)]"
+FOPTDLD,2269.036185,0.966943784,"[np.float64(3.0949), np.float64(2437.0239), np.float64(107.4613), np.float64(1618.8779)]"
+SOPTDLD,2092.049651,0.971392333,"[np.float64(3.08), np.float64(721.3254), np.float64(2211.4353), 0.0, np.float64(293.4974)]"
+TOPTD,3984.878416,0.900552961,"[np.float64(3.07), np.float64(1594.3333), np.float64(1594.3334), np.float64(1594.3335), 0]"

@@ -1,0 +1,6 @@
+Model,W-Statistic,p-value,Is_Normal
+FOPTD,0.9019,0.4406,True
+SOPTD,0.8185,0.1397,True
+FOPTDLD,0.9733,0.8617,True
+SOPTDLD,0.8619,0.2672,True
+TOPTD,0.8837,0.3546,True
