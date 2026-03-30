@@ -157,8 +157,8 @@ if __name__ == "__main__":
     shared_config = {
         "patience_limit": 25,
         "max_iters": 200,
-        "tol": 1.0,
-        "improvement_tol": 1.0,
+        "tol": 0.01,
+        "improvement_tol": 0.01,
         "n_rounds": 50
     }
 
@@ -186,7 +186,7 @@ if __name__ == "__main__":
     pop_sizes = list(range(START_POP, END_POP + 1, STEP_SIZE))
     if pop_sizes[-1] != END_POP: pop_sizes.append(END_POP)
 
-    batch_dir = "BATCH_DO_OPENLOOP"
+    batch_dir = "BATCH_DO_OPENLOOP_2"
 
     transfer_functions_to_run = [
         {
@@ -357,7 +357,7 @@ if __name__ == "__main__":
                 if lines_plotted > 0:
                     plt.title(f'Algorithm Comparison: Cost Convergence - Pop {pop_size} (Round {target_round})',
                               fontsize=14, fontweight='bold')
-                    plt.ylabel('ITAE Cost (log10)', fontsize=12)
+                    plt.ylabel('Cost (log10)', fontsize=12)
                     plt.xlabel('Iteration', fontsize=12)
                     plt.grid(True, which='both', linestyle=':', linewidth=0.7)
                     plt.legend(loc='upper right', fontsize=11)
