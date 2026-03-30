@@ -232,37 +232,60 @@ class EvolutionaryOptimizer(ABC):
             return None, None
 
     def save_plots(self, round_num, history, best_Kp, best_Ki):
-        """Generates and saves the step response plot for the best parameters."""
-        
+        """Generates and saves separate plots for the step response and cost convergence."""
+
         T_best, y_best = self.simulate_response(best_Kp, best_Ki, amplitude=1.0)
 
         plt.figure(figsize=(10, 6))
-        
+
         if T_best is not None:
-            # Plot the actual system response
             plt.plot(
-                T_best, y_best, 
-                linewidth=3, 
-                color='#1f77b4', 
+                T_best, y_best,
+                linewidth=3,
+                color='#1f77b4',
                 label=f'Best Params (Kp={best_Kp:.4f}, Ki={best_Ki:.4f})'
             )
 
-        # Plot the setpoint setpoint line
         plt.axhline(1.0, color='red', linestyle='--', linewidth=2, label='Target Setpoint (1.0)')
-
-        # Plot styling
         plt.title(f'Closed-Loop Step Response - Round {round_num}', fontsize=14, fontweight='bold')
         plt.ylabel('Process Output (y)', fontsize=12)
         plt.xlabel('Time (s)', fontsize=12)
-        
-        # Add a nice grid for readability
         plt.grid(True, which='both', linestyle=':', linewidth=0.7)
         plt.legend(loc='lower right', fontsize=11)
-        
-        # Save and close (added zero-padding to the filename for better sorting, e.g., 025, 050)
-        plot_path = self.output_dir / f'response_round_{round_num:03d}.png'
+
+        response_plot_path = self.output_dir / f'response_round_{round_num:03d}.png'
         plt.tight_layout()
-        plt.savefig(plot_path, dpi=300)
+        plt.savefig(response_plot_path, dpi=300)
+        plt.close()
+
+        plt.figure(figsize=(10, 6))
+
+        if history and len(history) > 0:
+            iterations = range(1, len(history) + 1)
+            plt.plot(
+                iterations, history,
+                linewidth=2.5,
+                color='#ff7f0e',
+                label='Best Cost Found'
+            )
+
+            # Add discrete points if the iteration count is small enough to not look messy
+            if len(history) <= 50:
+                plt.plot(iterations, history, 'o', color='#d62728', markersize=5)
+
+            plt.title(f'Cost Convergence - Round {round_num}', fontsize=14, fontweight='bold')
+            plt.ylabel('ITAE Cost (log10)', fontsize=12)
+            plt.xlabel('Iteration', fontsize=12)
+            plt.grid(True, which='both', linestyle=':', linewidth=0.7)
+            plt.legend(loc='upper right', fontsize=11)
+        else:
+            # Fallback if the algorithm subclass doesn't properly return the history array
+            plt.text(0.5, 0.5, "No cost history provided.", ha='center', va='center', fontsize=12)
+            plt.title(f'Cost Convergence - Round {round_num}', fontsize=14, fontweight='bold')
+
+        cost_plot_path = self.output_dir / f'cost_history_round_{round_num:03d}.png'
+        plt.tight_layout()
+        plt.savefig(cost_plot_path, dpi=300)
         plt.close()
 
     # -- Main Experiment Loop --
@@ -279,6 +302,7 @@ class EvolutionaryOptimizer(ABC):
             # Subclass executes its specific algorithm here
             best_Kp, best_Ki, cost, iterations_run, cost_history = self.optimize_round(current_round)
             print(f"Round {current_round:02d} | Best Kp: {best_Kp:.5f} | Best Ki: {best_Ki:.5f} | Cost: {cost:.4f}")
+
             # Store and save data
             self.agg_history['iterations'].append(iterations_run)
             self.agg_history['costs'].append(cost)
@@ -288,9 +312,18 @@ class EvolutionaryOptimizer(ABC):
             with open(csv_file, mode='a', newline='') as file:
                 csv.writer(file).writerow([current_round, iterations_run, cost, best_Kp, best_Ki])
 
-            # Only generate plots for the 25th and 50th rounds
-            if current_round in [25, 50]:
+            # Generate plots and save raw history for sweeps
+            if current_round in [25, 50, self.n_rounds]:
                 self.save_plots(current_round, cost_history, best_Kp, best_Ki)
+
+                # --- NEW: Save raw history data for the sweeping script ---
+                if cost_history:
+                    history_file = self.output_dir / f"raw_cost_history_round_{current_round:03d}.csv"
+                    with open(history_file, mode='w', newline='') as f:
+                        writer = csv.writer(f)
+                        writer.writerow(["Iteration", "Cost"])
+                        for idx, c in enumerate(cost_history):
+                            writer.writerow([idx + 1, c])
 
         self._print_and_save_summary()
 

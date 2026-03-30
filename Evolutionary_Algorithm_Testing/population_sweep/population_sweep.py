@@ -8,6 +8,7 @@ from tqdm import tqdm
 import csv
 from pathlib import Path
 import math
+import matplotlib.pyplot as plt
 
 try:
     from Evolutionary_Algorithm_Testing.de.de_optimizer import DEOptimizer
@@ -186,17 +187,34 @@ if __name__ == "__main__":
 
     transfer_functions_to_run = [
         {
-            "base_dir": "results_population_sweep_do_tf1_nighttime",
+            "base_dir": "results_population_sweep_do_feb5_daytime",
             "tf_params": {
-                'tf_num': [86.7056], 'tf_den': [3287.0801, 1], 'tf_delay': 0.0,
-                'tf_n_pade': 2, 'computed_delay': 0.05, 'is_reverse_acting': False, 'max_kp': 100.0
+                'tf_num': [1.359],
+                'tf_den': [1745.481, 1],
+                'tf_delay': 0.0,
+                'tf_n_pade': 2,
+                'computed_delay': 0.05,
+                'is_reverse_acting': False,
+                'max_kp': 100.0
             }
-        }
+        },
+        {
+            "base_dir": "results_population_sweep_do_feb5_nighttime",
+            "tf_params": {
+                'tf_num': [2.336],
+                'tf_den': [3086.933, 1],
+                'tf_delay': 0.0,
+                'tf_n_pade': 2,
+                'computed_delay': 0.05,
+                'is_reverse_acting': False,
+                'max_kp': 100.0
+            }
+        },
     ]
 
     total_global_start_time = time.time()
     script_dir = Path(__file__).parent.resolve()
-    batch_dir = "BATCH_4"
+    batch_dir = "BATCH_TEST"
 
     with multiprocessing.Pool(processes=num_cores) as pool:
         for idx, tf_config in enumerate(transfer_functions_to_run):
@@ -229,9 +247,52 @@ if __name__ == "__main__":
             raw_results = list(tqdm(pool.imap(worker, tasks), total=len(tasks)))
 
             df_results = save_checkpoint(raw_results, BASE_OUTPUT_DIR)
-            
+
             if df_results.empty:
                 print("No data collected for this transfer function.")
+
+            print("\nGenerating combined cost history graphs for each population size...")
+            target_round = shared_config['n_rounds']  # Usually 50
+
+            for pop_size in pop_sizes:
+                plt.figure(figsize=(10, 6))
+                lines_plotted = 0
+
+                # Colors mapped for consistency across graphs
+                color_map = {'DE': '#1f77b4', 'GA': '#ff7f0e', 'PSO': '#2ca02c'}
+
+                for algo in ALGO_MAP.keys():
+                    # Construct path to the saved raw history
+                    algo_dir = BASE_OUTPUT_DIR / algo / f"pop_{pop_size}"
+                    history_file = algo_dir / f"raw_cost_history_round_{target_round:03d}.csv"
+
+                    if history_file.exists():
+                        try:
+                            df_hist = pd.read_csv(history_file)
+                            plt.plot(
+                                df_hist['Iteration'],
+                                df_hist['Cost'],
+                                linewidth=2.5,
+                                color=color_map.get(algo, 'black'),
+                                label=f"{algo} (Final Cost: {df_hist['Cost'].iloc[-1]:.4f})"
+                            )
+                            lines_plotted += 1
+                        except Exception as e:
+                            print(f"Failed to plot {algo} pop {pop_size}: {e}")
+
+                if lines_plotted > 0:
+                    plt.title(f'Algorithm Comparison: Cost Convergence - Pop {pop_size} (Round {target_round})',
+                              fontsize=14, fontweight='bold')
+                    plt.ylabel('ITAE Cost (log10)', fontsize=12)
+                    plt.xlabel('Iteration', fontsize=12)
+                    plt.grid(True, which='both', linestyle=':', linewidth=0.7)
+                    plt.legend(loc='upper right', fontsize=11)
+
+                    plot_path = BASE_OUTPUT_DIR / f'combined_cost_history_pop_{pop_size:03d}.png'
+                    plt.tight_layout()
+                    plt.savefig(plot_path, dpi=300)
+
+                plt.close()
 
             end_time_sec = time.time()
             end_datetime = datetime.now()
