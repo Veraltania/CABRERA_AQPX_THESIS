@@ -28,7 +28,8 @@ def worker(task):
 
     # --- MICRO-LEVEL RESUME CHECK ---
     # If the CSV already exists, skip computation and just read the data
-    search_pattern = os.path.join(output_folder, "*.csv")
+    # Updated to ONLY look for the main detailed log, ignoring raw history CSVs
+    search_pattern = os.path.join(output_folder, "*_detailed_log.csv")
     found_files = glob.glob(search_pattern)
 
     if found_files:
@@ -147,7 +148,7 @@ if __name__ == "__main__":
     total_cores = multiprocessing.cpu_count()
 
     # Calculate 50% and ensure it's at least 1 core
-    num_cores = max(1, math.floor(total_cores * 0.5))
+    num_cores = max(1, math.floor(total_cores * 0.75))
 
     START_POP = 10
     END_POP = 100
@@ -185,12 +186,50 @@ if __name__ == "__main__":
     pop_sizes = list(range(START_POP, END_POP + 1, STEP_SIZE))
     if pop_sizes[-1] != END_POP: pop_sizes.append(END_POP)
 
+    batch_dir = "BATCH_DO_OPENLOOP"
+
     transfer_functions_to_run = [
         {
             "base_dir": "results_population_sweep_do_feb5_daytime",
             "tf_params": {
                 'tf_num': [1.359],
                 'tf_den': [1745.481, 1],
+                'tf_delay': 0.0,
+                'tf_n_pade': 2,
+                'computed_delay': 0.05,
+                'is_reverse_acting': False,
+                'max_kp': 100.0
+            }
+        },
+        {
+            "base_dir": "results_population_sweep_do_feb7_daytime",
+            "tf_params": {
+                'tf_num': [1.151],
+                'tf_den': [3000.660, 1],
+                'tf_delay': 0.0,
+                'tf_n_pade': 2,
+                'computed_delay': 0.05,
+                'is_reverse_acting': False,
+                'max_kp': 100.0
+            }
+        },
+        {
+            "base_dir": "results_population_sweep_do_feb25_daytime",
+            "tf_params": {
+                'tf_num': [2.217],
+                'tf_den': [2822.288, 1],
+                'tf_delay': 0.0,
+                'tf_n_pade': 2,
+                'computed_delay': 0.05,
+                'is_reverse_acting': False,
+                'max_kp': 100.0
+            }
+        },
+        {
+            "base_dir": "results_population_sweep_do_feb26_daytime",
+            "tf_params": {
+                'tf_num': [2.200],
+                'tf_den': [2770.238, 1],
                 'tf_delay': 0.0,
                 'tf_n_pade': 2,
                 'computed_delay': 0.05,
@@ -210,11 +249,46 @@ if __name__ == "__main__":
                 'max_kp': 100.0
             }
         },
+        {
+            "base_dir": "results_population_sweep_do_feb7_nighttime",
+            "tf_params": {
+                'tf_num': [2.037],
+                'tf_den': [4471.466, 1],
+                'tf_delay': 0.0,
+                'tf_n_pade': 2,
+                'computed_delay': 0.05,
+                'is_reverse_acting': False,
+                'max_kp': 100.0
+            }
+        },
+        {
+            "base_dir": "results_population_sweep_do_feb25_nighttime",
+            "tf_params": {
+                'tf_num': [3.898],
+                'tf_den': [2999.003, 1],
+                'tf_delay': 0.0,
+                'tf_n_pade': 2,
+                'computed_delay': 0.05,
+                'is_reverse_acting': False,
+                'max_kp': 100.0
+            }
+        },
+        {
+            "base_dir": "results_population_sweep_do_feb26_nighttime",
+            "tf_params": {
+                'tf_num': [3.105],
+                'tf_den': [2518.921, 1],
+                'tf_delay': 1446.014,
+                'tf_n_pade': 2,
+                'computed_delay': 0.05,
+                'is_reverse_acting': False,
+                'max_kp': 100.0
+            }
+        }
     ]
 
     total_global_start_time = time.time()
     script_dir = Path(__file__).parent.resolve()
-    batch_dir = "BATCH_TEST"
 
     with multiprocessing.Pool(processes=num_cores) as pool:
         for idx, tf_config in enumerate(transfer_functions_to_run):

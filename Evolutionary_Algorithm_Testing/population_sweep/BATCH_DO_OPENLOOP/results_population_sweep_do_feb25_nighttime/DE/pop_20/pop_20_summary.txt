@@ -1,0 +1,7 @@
+--- DE EXPERIMENT SUMMARY ---
+Total Rounds: 50
+Average Iterations: 5.8
+Average ITAE Cost:  2.65
+-----------------------------
+Kp: 9.76339 (+/- 0.61304)
+Ki: 0.003326 (+/- 0.000246)

@@ -301,7 +301,7 @@ class EvolutionaryOptimizer(ABC):
         for current_round in range(1, self.n_rounds + 1):
             # Subclass executes its specific algorithm here
             best_Kp, best_Ki, cost, iterations_run, cost_history = self.optimize_round(current_round)
-            print(f"Round {current_round:02d} | Best Kp: {best_Kp:.5f} | Best Ki: {best_Ki:.5f} | Cost: {cost:.4f}")
+            # print(f"Round {current_round:02d} | Best Kp: {best_Kp:.5f} | Best Ki: {best_Ki:.5f} | Cost: {cost:.4f}")
 
             # Store and save data
             self.agg_history['iterations'].append(iterations_run)
