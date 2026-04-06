@@ -56,8 +56,8 @@ def create_calibration_curve(raw_values, actual_values):
     # Display the plot
     plt.show()
 
-raw_analog = [35.92, 37.27, 92.61, 200.0]
-manual_do = [3.20, 3.40, 4.60, 7.70]
+raw_analog = [60, 139, 143, 160, 280]
+manual_do = [2.01, 3.20, 3.34, 3.41, 7.8]
 
 # Run the function
 create_calibration_curve(raw_analog, manual_do)

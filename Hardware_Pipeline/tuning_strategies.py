@@ -101,9 +101,11 @@ class AdaptiveTuningStrategy(TuningStrategy):
             self.itae_current_window = 0.0
             self.window_timer = 0.0
 
+
 class StaticTuningStrategy(TuningStrategy):
     def load_state(self, controller, log_file):
-        """Reads the CSV file and loads BOTH integral state and parameters from the LAST row."""
+        """Reads the CSV file and loads the integral state from the LAST row,
+           but locks the tuning parameters to the FIRST row (baseline)."""
         if not os.path.exists(log_file):
             print(f"[{controller.name}-Static] No state file found. Starting fresh.")
             return
@@ -111,25 +113,32 @@ class StaticTuningStrategy(TuningStrategy):
         try:
             with open(log_file, 'r') as f:
                 reader = csv.DictReader(f)
+                first_row = None
                 last_row = None
 
                 for row in reader:
+                    # Capture the very first row for our baseline tuning parameters
+                    if first_row is None:
+                        first_row = row
+
+                    # Continuously update to get the final row for our PI state
                     last_row = row
 
                 if last_row:
-                    # 1. Reload PI State to prevent control signal jumps
+                    # 1. Reload PI State to prevent control signal jumps (Bumpless Transfer)
                     controller.integral_sum = float(last_row.get('integral_sum', 0.0))
                     controller.last_error = float(last_row.get('error', 0.0))
 
-                    # 2. Reload Tuning Parameters from LAST row to freeze adaptive values
-                    controller.kp = float(last_row.get('kp', controller.kp))
-                    controller.ki = float(last_row.get('ki', controller.ki))
-                    controller.foptd_gain = float(last_row.get('foptd_gain', controller.foptd_gain))
-                    controller.foptd_tau = float(last_row.get('foptd_tau', controller.foptd_tau))
-                    controller.foptd_delay = float(last_row.get('foptd_delay', controller.foptd_delay))
+                if first_row:
+                    # 2. Reload Tuning Parameters from the FIRST row to freeze baseline values
+                    controller.kp = float(first_row.get('kp', controller.kp))
+                    controller.ki = float(first_row.get('ki', controller.ki))
+                    controller.foptd_gain = float(first_row.get('foptd_gain', controller.foptd_gain))
+                    controller.foptd_tau = float(first_row.get('foptd_tau', controller.foptd_tau))
+                    controller.foptd_delay = float(first_row.get('foptd_delay', controller.foptd_delay))
 
                     print(
-                        f"[{controller.name}-Static] Resumed. Locked to Last Adaptive Kp: {controller.kp:.3f}. Ki: {controller.ki:.3f}")
+                        f"[{controller.name}-Static] Resumed. Locked to Baseline Kp: {controller.kp:.3f}. Ki: {controller.ki:.3f}")
 
         except (ValueError, KeyError) as e:
             print(f"[{controller.name}] Corrupt data in state file ({e}). Maintaining current PI state in memory.")
@@ -139,6 +148,7 @@ class StaticTuningStrategy(TuningStrategy):
     def evaluate_performance(self, controller, error, dt):
         """Static strategy does not tune, so it does nothing here."""
         pass
+
 
 class TimeBasedStrategyManager:
     def __init__(self, schedule_configs):

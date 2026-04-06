@@ -56,8 +56,8 @@ if __name__ == "__main__":
     # ==========================================
 
     # Your calibration equation variables: DO = (m * Raw) + b
-    SLOPE_M = 0.027  # Replace with your chosen slope
-    INTERCEPT_B = 2.26  # Replace with your chosen intercept
+    SLOPE_M = 0.0272  # Replace with your chosen slope
+    INTERCEPT_B = -0.30  # Replace with your chosen intercept
 
     # Define your directories using pathlib.Path
     # You can keep the 'r' prefix for Windows paths, Path will parse it correctly for any OS

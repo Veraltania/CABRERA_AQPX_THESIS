@@ -4,7 +4,9 @@ import matplotlib.dates as mdates
 from pathlib import Path
 
 
-def plot_do_data(base_dir, date_str, filename, factor, pump_off_slices, step_response_slices, label="DO (mg/L)"):
+def plot_data(base_dir, date_str, filename, factor,
+              pump_off_slices, step_response_slices, data_column,
+              data_name, label="DO (mg/L)"):
     """
     Reads the dissolved oxygen data, downscales it, and plots it with visual separators
     for specified time slices (pump off and step response).
@@ -23,21 +25,20 @@ def plot_do_data(base_dir, date_str, filename, factor, pump_off_slices, step_res
         errors="coerce"
     )
 
-    # FIX 1: Drop invalid times and sort chronologically!
-    # This prevents the line from drawing backwards across the graph.
+    # Drop invalid times and sort chronologically
     df = df.dropna(subset=["Datetime"])
     df = df.sort_values(by="Datetime")
 
     # Downscale values
     dtime_small = df["Datetime"].iloc[::factor]
-    do_small = df["MCP_WQ_DO"].iloc[::factor]
+    do_small = df[data_column].iloc[::factor]
 
     # Plotting
     plt.figure(figsize=(12, 4))
     plt.plot(dtime_small, do_small, label=label)
 
-    # FIX 2: Force the y-axis to start at 0
-    plt.ylim(bottom=0)
+    # Standardize the y-axis from 0 to 8
+    plt.ylim(0, 8)
 
     # Add visual separators for "Pump Off" time slices
     for idx, (start, end) in enumerate(pump_off_slices):
@@ -61,16 +62,20 @@ def plot_do_data(base_dir, date_str, filename, factor, pump_off_slices, step_res
         # Plot a green shaded region for the step response slice
         plt.axvspan(start_dt, end_dt, color='green', alpha=0.2, label=label)
 
-    plt.xlabel("Time")
-    plt.ylabel("DO (MCP_WQ_DO)")
-    plt.title(f"Dissolved Oxygen vs Time ({date_str})")
+    plt.xlabel("Time", fontsize=16)
+    plt.ylabel(f"{data_name}", fontsize=16)
+    plt.title(f"{data_name} vs Time ({date_str})", fontsize=16)
 
-    # Hourly ticks
-    plt.gca().xaxis.set_major_locator(mdates.HourLocator(interval=1))
+    # Change to every 2 hours to reduce clutter
+    plt.gca().xaxis.set_major_locator(mdates.HourLocator(interval=2))
     plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
 
     plt.xticks(rotation=45)
-    plt.legend()
+
+    # Set x and y-axis tick font sizes
+    plt.tick_params(axis='both', labelsize=16)
+
+    plt.legend(fontsize=16)
     plt.tight_layout()
     plt.show()
 
@@ -79,10 +84,9 @@ if __name__ == '__main__':
     # =========================================================
     # INPUT PARAMETERS
     # =========================================================
-    date_str = "2026-02-26"
+    date_str = "2026-02-05"
     base_dir = Path(r"D:\aqpx\Cabrera_Thesis_AQPX\Transfer_Function_Modeling\data_calibrated")
     filename = f"AQPX_data_log_{date_str}.csv"
-
 
     # Downscale factor
     downscale_factor = 20
@@ -94,16 +98,18 @@ if __name__ == '__main__':
     ]
 
     step_response_times = [
-        ("10:00:00", "13:00:00"),
+        ("10:00:00", "14:00:00"),
         ("20:00:00", "23:59:59")
     ]
     # =========================================================
 
-    plot_do_data(
+    plot_data(
         base_dir=base_dir,
         date_str=date_str,
         filename=filename,
         factor=downscale_factor,
         pump_off_slices=pump_off_times,
-        step_response_slices=step_response_times
+        step_response_slices=step_response_times,
+        data_name="Dissolved Oxygen (mg/L)",
+        data_column="MCP_WQ_DO"
     )

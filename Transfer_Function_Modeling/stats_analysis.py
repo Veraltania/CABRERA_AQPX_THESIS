@@ -2,6 +2,7 @@ import pandas as pd
 from scipy import stats
 import scikit_posthocs as sp
 from pathlib import Path
+import warnings
 
 try:
     import pingouin as pg
@@ -66,7 +67,7 @@ def run_repeated_measures_analysis(csv_filepath):
     df_long.rename(columns={'index': 'Trial'}, inplace=True)
 
     # =========================================================
-    # PARAMETRIC PATH (Mauchly's + RM ANOVA + Tukey's HSD)
+    # PARAMETRIC PATH (Mauchly's + RM ANOVA + Paired t-tests)
     # =========================================================
     if is_normal:
         print("Conclusion: All models are normally distributed (Normality is OK).")
@@ -75,8 +76,12 @@ def run_repeated_measures_analysis(csv_filepath):
         # --- 2A. Sphericity Check (Mauchly's Test) ---
         print("--- 2A. Sphericity Check (Mauchly's Test) ---")
         try:
-            spher, W, chi_sq, ddof, p_val_spher = pg.sphericity(data=df_long, dv='Score', subject='Trial',
-                                                                within='Model')
+            # Catch the harmless "divide by zero" RuntimeWarning
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", RuntimeWarning)
+                spher, W, chi_sq, ddof, p_val_spher = pg.sphericity(data=df_long, dv='Score', subject='Trial',
+                                                                    within='Model')
+
             print(f"Sphericity met? {spher} (p-value = {p_val_spher:.3f})")
 
             # Save Sphericity Results
@@ -133,17 +138,22 @@ def run_repeated_measures_analysis(csv_filepath):
         print(
             f"\nConclusion: Significant differences found among models (p = {p_val_anova:.3f}). Proceeding to post-hoc testing...\n")
 
-        # --- 4A. Tukey's Post-hoc Test ---
-        print("--- 4A. Tukey's Post-hoc Test ---")
-        tukey_results = sp.posthoc_tukey(df_long, val_col='Score', group_col='Model')
+        # --- 4A. Paired t-tests Post-hoc (with Holm Correction) ---
+        print("--- 4A. Paired t-tests Post-hoc (with Holm Correction) ---")
 
-        print("Pairwise p-values (values < 0.05 indicate a significant difference):")
-        print(tukey_results.round(3))
+        # Pingouin automatically performs paired t-tests when 'within' and 'subject' are provided.
+        posthoc_results = pg.pairwise_tests(data=df_long, dv='Score', within='Model', subject='Trial', padjust='holm')
 
-        # Save to CSV
-        tukey_csv = f"{base_out_name}_Tukey_PostHoc.csv"
-        tukey_results.round(3).to_csv(tukey_csv)
-        print(f"\nSUCCESS: Tukey post-hoc results successfully saved to '{tukey_csv}'")
+        print("Pairwise p-values (p-corr < 0.05 indicates a significant difference):")
+
+        # Display the most relevant columns in the terminal
+        cols_to_print = ['A', 'B', 'T', 'dof', 'p-unc', 'p-corr']
+        print(posthoc_results[cols_to_print].round(4).to_string(index=False))
+
+        # Save the full detailed table (including effect sizes like Hedges g) to CSV
+        posthoc_csv = f"{base_out_name}_Paired_ttests_Holm.csv"
+        posthoc_results.round(4).to_csv(posthoc_csv, index=False)
+        print(f"\nSUCCESS: Paired t-test post-hoc results successfully saved to '{posthoc_csv}'")
 
         return
 
@@ -187,7 +197,8 @@ def run_repeated_measures_analysis(csv_filepath):
     nemenyi_results.round(3).to_csv(nemenyi_csv)
     print(f"\nSUCCESS: Nemenyi post-hoc results successfully saved to '{nemenyi_csv}'")
 
+
 if __name__ == "__main__":
-    input_csv_file = 'Model_R2_DO_Daytime.csv'
+    input_csv_file = 'Model_R2_DO_Nighttime.csv'
 
     run_repeated_measures_analysis(input_csv_file)
