@@ -16,7 +16,7 @@ class GAOptimizer(EvolutionaryOptimizer):
 
     def optimize_round(self, round_num):
         def cost_wrapper(solution):
-            return self.calculate_itae_cost(solution[0], solution[1])
+            return self.calculate_cost(solution[0], solution[1])
 
         class Tracker:
             def __init__(self, patience, tol, cost_func):

@@ -136,7 +136,7 @@ def fast_fbest_diffeq(Kp_ctrl, Ki_ctrl, K_plant, T_plant, delay,
     if np.max(y_vals) > 1.2 or np.min(y_vals) < -0.2:
         f_best += 1e9
 
-    return np.log10(max(f_best, 1e-12))
+    return max(f_best, 1e-12)
 
 
 # --- WARM-UP ---
@@ -190,7 +190,7 @@ class EvolutionaryOptimizer(ABC):
         output_dir.mkdir(parents=True, exist_ok=True)
         return output_dir
 
-    def calculate_itae_cost(self, Kp, Ki):
+    def calculate_cost(self, Kp, Ki):
         # 1. Fast-Fail Boundary Check
         if (self.is_reverse_acting and Kp > 0) or (not self.is_reverse_acting and Kp < 0):
             return 1e9  # Wrong sign, instantly penalize
@@ -276,7 +276,7 @@ class EvolutionaryOptimizer(ABC):
                 plt.plot(iterations, history, 'o', color='#d62728', markersize=5)
 
             plt.title(f'Cost Convergence - Round {round_num}', fontsize=14, fontweight='bold')
-            plt.ylabel('ITAE Cost (log10)', fontsize=12)
+            plt.ylabel('Cost', fontsize=12)
             plt.xlabel('Iteration', fontsize=12)
             plt.grid(True, which='both', linestyle=':', linewidth=0.7)
             plt.legend(loc='upper right', fontsize=11)
@@ -300,7 +300,7 @@ class EvolutionaryOptimizer(ABC):
         # Initialize CSV Header if the file is new
         if not csv_file.exists():
             with open(csv_file, mode='w', newline='') as file:
-                csv.writer(file).writerow(['Round', 'Iterations_Run', 'Final_Cost_ITAE', 'Best_Kp', 'Best_Ki'])
+                csv.writer(file).writerow(['Round', 'Iterations_Run', 'Final_Cost', 'Best_Kp', 'Best_Ki'])
 
         for current_round in range(1, self.n_rounds + 1):
             # Subclass executes its specific algorithm here
@@ -336,7 +336,7 @@ class EvolutionaryOptimizer(ABC):
             f"--- {self.algo_name} EXPERIMENT SUMMARY ---\n"
             f"Total Rounds: {self.n_rounds}\n"
             f"Average Iterations: {np.mean(self.agg_history['iterations']):.1f}\n"
-            f"Average ITAE Cost:  {np.mean(self.agg_history['costs']):.2f}\n"
+            f"Average Cost:  {np.mean(self.agg_history['costs']):.2f}\n"
             f"-----------------------------\n"
             f"Kp: {np.mean(self.agg_history['kp']):.5f} (+/- {np.std(self.agg_history['kp']):.5f})\n"
             f"Ki: {np.mean(self.agg_history['ki']):.6f} (+/- {np.std(self.agg_history['ki']):.6f})\n"

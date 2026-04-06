@@ -18,7 +18,7 @@ class DEOptimizer(EvolutionaryOptimizer):
 
     def optimize_round(self, round_num):
         def cost_wrapper(x):
-            return self.calculate_itae_cost(x[0], x[1])
+            return self.calculate_cost(x[0], x[1])
 
         class Tracker:
             def __init__(self, patience, tol):
