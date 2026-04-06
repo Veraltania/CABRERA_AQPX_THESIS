@@ -11,6 +11,10 @@ class DEOptimizer(EvolutionaryOptimizer):
         self.mutation = config.get('mutation', (0.5, 1.0))
         self.recombination = config.get('recombination', 0.745)
         self.strategy = config.get('strategy', 'best1bin')
+        
+        # Explicitly force patience and tolerance from the config
+        self.patience = config.get('patience', 25)  
+        self.tol = config.get('tol', 1e-4)          
 
     def optimize_round(self, round_num):
         def cost_wrapper(x):
@@ -38,6 +42,7 @@ class DEOptimizer(EvolutionaryOptimizer):
                 #print(
                     #f"   Gen {len(self.history)}: Cost={cost:.2f} (Best={self.best_cost:.2f}) | Patience: {self.counter}/{self.patience}")
 
+                # Returning True in a SciPy differential_evolution callback forces early stopping
                 if self.counter >= self.patience:
                     #print(f"   --> Stopping Early: No improvement for {self.patience} generations.")
                     return True
