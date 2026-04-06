@@ -131,9 +131,9 @@ if __name__ == "__main__":
     population_sizes = [50]
 
     # --- 2. SWEEP CONFIGURATION (PHI PARAMETERS) ---
-    start_phi = 2.05
+    start_phi = 2.00
     end_phi = 4.00
-    num_bins = 20
+    num_bins = 10
 
     OUTPUT_DIRECTORY = "PSO_SWEEP_PHI"
     phi_bins = np.linspace(start_phi, end_phi, num_bins)

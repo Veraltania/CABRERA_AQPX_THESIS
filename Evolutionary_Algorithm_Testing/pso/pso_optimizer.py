@@ -38,7 +38,7 @@ class PSOOptimizer(EvolutionaryOptimizer):
             # 1. Faster iteration: Evaluate costs using a list comprehension.
             # This avoids the heavy overhead of repeated Python .append() calls.
             costs_array = np.array([
-                self.calculate_itae_cost(p[0], p[1]) for p in particles
+                self.calculate_cost(p[0], p[1]) for p in particles
             ])
 
             # 2. Vectorized sanitization: Replace NaNs and Infs across the whole array instantly.
