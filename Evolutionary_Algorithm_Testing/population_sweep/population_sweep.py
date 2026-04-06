@@ -335,6 +335,10 @@ if __name__ == "__main__":
                 # Colors mapped for consistency across graphs
                 color_map = {'DE': '#1f77b4', 'GA': '#ff7f0e', 'PSO': '#2ca02c'}
 
+                # --- FIRST PASS: Load data and determine the maximum iteration ---
+                loaded_data = {}
+                max_iter_found = 0
+
                 for algo in ALGO_MAP.keys():
                     # Construct path to the saved raw history
                     algo_dir = BASE_OUTPUT_DIR / algo / f"pop_{pop_size}"
@@ -343,22 +347,46 @@ if __name__ == "__main__":
                     if history_file.exists():
                         try:
                             df_hist = pd.read_csv(history_file)
-                            plt.plot(
-                                df_hist['Iteration'],
-                                df_hist['Cost'],
-                                linewidth=2.5,
-                                color=color_map.get(algo, 'black'),
-                                label=f"{algo} (Final Cost: {df_hist['Cost'].iloc[-1]:.4f})"
-                            )
-                            lines_plotted += 1
+                            loaded_data[algo] = df_hist
+                            current_max = df_hist['Iteration'].max()
+                            if current_max > max_iter_found:
+                                max_iter_found = current_max
                         except Exception as e:
-                            print(f"Failed to plot {algo} pop {pop_size}: {e}")
+                            print(f"Failed to load {algo} pop {pop_size}: {e}")
+
+                # Set the target max iteration to at least 50 (or higher if an algo ran longer)
+                target_max_iter = max(50, int(max_iter_found))
+
+                # --- SECOND PASS: Pad early-stopping algorithms and plot ---
+                for algo, df_hist in loaded_data.items():
+                    last_iter = df_hist['Iteration'].iloc[-1]
+                    last_cost = df_hist['Cost'].iloc[-1]
+
+                    # Pad the dataframe if the algorithm stopped early
+                    if last_iter < target_max_iter:
+                        pad_iters = list(range(int(last_iter) + 1, target_max_iter + 1))
+                        pad_costs = [last_cost] * len(pad_iters)
+                        pad_df = pd.DataFrame({'Iteration': pad_iters, 'Cost': pad_costs})
+                        df_hist = pd.concat([df_hist, pad_df], ignore_index=True)
+
+                    plt.plot(
+                        df_hist['Iteration'],
+                        df_hist['Cost'],
+                        linewidth=2.5,
+                        color=color_map.get(algo, 'black'),
+                        label=f"{algo} (Final Cost: {last_cost:.4f})"
+                    )
+                    lines_plotted += 1
 
                 if lines_plotted > 0:
                     plt.title(f'Algorithm Comparison: Cost Convergence - Pop {pop_size} (Round {target_round})',
                               fontsize=14, fontweight='bold')
-                    plt.ylabel('Cost (log10)', fontsize=12)
+                    plt.ylabel('Cost', fontsize=12) # Removed log10 from label unless you are strictly plotting log values
                     plt.xlabel('Iteration', fontsize=12)
+                    
+                    # Force the x-axis to be consistent across all graphs
+                    plt.xlim(0, target_max_iter) 
+                    
                     plt.grid(True, which='both', linestyle=':', linewidth=0.7)
                     plt.legend(loc='upper right', fontsize=11)
 
