@@ -253,6 +253,8 @@ class EvolutionaryOptimizer(ABC):
         plt.grid(True, which='both', linestyle=':', linewidth=0.7)
         plt.legend(loc='lower right', fontsize=11)
 
+        plt.ylim(bottom=0)
+
         response_plot_path = self.output_dir / f'response_round_{round_num:03d}.png'
         plt.tight_layout()
         plt.savefig(response_plot_path, dpi=300)
@@ -282,6 +284,8 @@ class EvolutionaryOptimizer(ABC):
             # Fallback if the algorithm subclass doesn't properly return the history array
             plt.text(0.5, 0.5, "No cost history provided.", ha='center', va='center', fontsize=12)
             plt.title(f'Cost Convergence - Round {round_num}', fontsize=14, fontweight='bold')
+
+        plt.ylim(bottom=0)
 
         cost_plot_path = self.output_dir / f'cost_history_round_{round_num:03d}.png'
         plt.tight_layout()
