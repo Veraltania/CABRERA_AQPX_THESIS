@@ -68,7 +68,7 @@ end
 function run_dde_solver(Kp_ctrl, Ki_ctrl, K_plant, T_plant, delay, w1, w2, w4)
     u0 = [0.0, 0.0, 0.0, 0.0, 0.0]
     p = (Kp_ctrl, Ki_ctrl, K_plant, T_plant, delay, w1, w2, w4)
-    simulation_time = T_plant * 5 + delay
+    simulation_time = T_plant * 3 + delay
     tspan = (0.0, simulation_time)
 
     prob = DDEProblem(dde_system, u0, dde_history, tspan, p, constant_lags=[delay])
