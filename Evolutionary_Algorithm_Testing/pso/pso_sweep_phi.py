@@ -27,6 +27,33 @@ def worker_run_pso(args):
     bin_costs = optimizer.agg_history['costs']
     bin_iters = optimizer.agg_history['iterations']
 
+    # --- RAW FITNESS HISTORY EXTRACTION & PADDING ---
+    # Retrieve the raw fitness histories (5th returned element from optimize_round)
+    raw_histories = optimizer.agg_history.get('histories', [])
+    avg_convergence_curve = None
+    
+    if raw_histories:
+        padded_histories = []
+        max_len = run_config['max_iters']
+        
+        for h in raw_histories:
+            h_list = list(h)
+            if len(h_list) == 0:
+                continue
+                
+            # Pad early-stopped trials with their last known best cost
+            if len(h_list) < max_len:
+                h_list.extend([h_list[-1]] * (max_len - len(h_list)))
+            # Truncate if it somehow exceeds max_iters
+            elif len(h_list) > max_len:
+                h_list = h_list[:max_len]
+                
+            padded_histories.append(h_list)
+            
+        if padded_histories:
+            # Average the curves across the 50 trials for this specific phi bin
+            avg_convergence_curve = np.mean(padded_histories, axis=0)
+
     # --- COST STATISTICS ---
     min_cost = np.min(bin_costs)
     max_cost = np.max(bin_costs)
@@ -63,7 +90,8 @@ def worker_run_pso(args):
         'bin_costs': bin_costs,
         'bin_iters': bin_iters,
         'bin_stats_cost': bin_stats_cost,
-        'bin_stats_iter': bin_stats_iter
+        'bin_stats_iter': bin_stats_iter,
+        'avg_convergence_curve': avg_convergence_curve
     }
 
 if __name__ == "__main__":
@@ -132,8 +160,8 @@ if __name__ == "__main__":
 
     # --- 2. SWEEP CONFIGURATION (PHI PARAMETERS) ---
     start_phi = 2.00
-    end_phi = 4.00
-    num_bins = 10
+    end_phi = 12.00
+    num_bins = 11
 
     OUTPUT_DIRECTORY = "PSO_SWEEP_PHI"
     phi_bins = np.linspace(start_phi, end_phi, num_bins)
@@ -146,7 +174,7 @@ if __name__ == "__main__":
     print(f"Global Directory         : {GLOBAL_ROOT_DIR}")
     print(f"Transfer Functions Queued: {list(transfer_functions.keys())}")
     print(f"Populations to test      : {population_sizes}")
-    print(f"Phi Ranges (phi1=phi2)   : [{start_phi} to {end_phi}] (20 bins)")
+    print(f"Phi Ranges (phi1=phi2)   : [{start_phi} to {end_phi}] (10 bins)")
     print(f"Multiprocessing          : Using {use_cores} of {total_cores} available cores.")
     print("\n")
 
@@ -181,6 +209,7 @@ if __name__ == "__main__":
                 phi_labels = []
                 pop_specific_cost_data = []
                 pop_specific_iter_data = []
+                all_convergence_curves = []
 
                 # Compile arguments for the multiprocessed pool mapping
                 tasks = [
@@ -212,6 +241,8 @@ if __name__ == "__main__":
                     
                     final_report_cost_data.append(res['bin_stats_cost'])
                     final_report_iter_data.append(res['bin_stats_iter'])
+                    
+                    all_convergence_curves.append(res['avg_convergence_curve'])
 
 
                 # --- 5. VISUALIZATIONS & LOCAL REPORTS PER POPULATION SIZE ---
@@ -294,6 +325,36 @@ if __name__ == "__main__":
                 plt.tight_layout()
                 plt.savefig(os.path.join(MASTER_SWEEP_DIR, 'iteration_distribution_boxplot_no_outliers.png'))
                 plt.close()
+
+                # ---------------------------
+                #  CONVERGENCE VISUALIZATION (COST VS. ITERATION)
+                # ---------------------------
+                # Check if we successfully captured history data
+                if any(c is not None for c in all_convergence_curves):
+                    plt.figure(figsize=(12, 8))
+                    
+                    # Colormap to cleanly separate the lines
+                    colors = plt.cm.viridis(np.linspace(0, 1, len(phi_labels)))
+                    
+                    for i, (phi_label, curve) in enumerate(zip(phi_labels, all_convergence_curves)):
+                        if curve is not None:
+                            plt.plot(range(len(curve)), curve, label=f'Phi = {phi_label}', 
+                                     color=colors[i], linewidth=2, alpha=0.8)
+
+                    plt.title(f'Cost vs. Iterations by Phi Value ({tf_name} | Pop: {pop_size})', fontsize=14)
+                    plt.xlabel('Iteration', fontsize=12)
+                    plt.ylabel('Average Best Cost', fontsize=12)
+                    
+                    # Log scale provides the best view of EA exponential cost dropoffs
+                    plt.yscale('log') 
+                    plt.grid(True, which="both", linestyle='--', alpha=0.6)
+                    
+                    # Legend outside the plot area
+                    plt.legend(title='Phi (\u03c6\u2081 = \u03c6\u2082)', bbox_to_anchor=(1.02, 1), 
+                               loc='upper left', borderaxespad=0.)
+                    plt.tight_layout()
+                    plt.savefig(os.path.join(MASTER_SWEEP_DIR, 'cost_vs_iteration_comparison.png'))
+                    plt.close()
 
                 # --- GENERATE LOCAL REPORTS FOR THIS POPULATION ---
                 local_cost_path = os.path.join(MASTER_SWEEP_DIR, f"report_costs_pop_{pop_size}.csv")

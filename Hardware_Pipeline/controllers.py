@@ -310,7 +310,7 @@ class ParameterController(ABC):
 class DOController(ParameterController):
     def __init__(self, name: str, strategy_manager, actuator):
         super().__init__(name=name,
-                         setpoint=6.0,
+                         setpoint=5.0,
                          strategy_manager=strategy_manager,
                          actuator=actuator,
                          initial_kp=0.7,
@@ -341,7 +341,7 @@ class DOController(ParameterController):
 class TDSController(ParameterController):
     def __init__(self, name: str, strategy_manager, actuator):
         super().__init__(name=name,
-                         setpoint=100,
+                         setpoint=200,
                          strategy_manager=strategy_manager,
                          actuator=actuator,
                          initial_kp=0.7,
