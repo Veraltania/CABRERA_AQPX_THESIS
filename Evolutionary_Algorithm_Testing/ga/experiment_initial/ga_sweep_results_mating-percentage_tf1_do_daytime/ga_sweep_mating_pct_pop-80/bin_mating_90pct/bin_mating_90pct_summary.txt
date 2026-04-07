@@ -1,7 +1,0 @@
---- GA EXPERIMENT SUMMARY ---
-Total Rounds: 50
-Average Iterations: 32.8
-Average ITAE Cost:  4.45
------------------------------
-Kp: 0.23259 (+/- 0.02860)
-Ki: 0.000164 (+/- 0.000035)
