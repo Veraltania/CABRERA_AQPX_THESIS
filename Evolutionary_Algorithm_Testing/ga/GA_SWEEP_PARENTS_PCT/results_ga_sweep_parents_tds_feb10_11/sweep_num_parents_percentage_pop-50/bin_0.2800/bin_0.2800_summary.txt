@@ -1,0 +1,7 @@
+--- PercentageParentsGA EXPERIMENT SUMMARY ---
+Total Rounds: 50
+Average Iterations: 41.6
+Average Cost:  1452.71
+-----------------------------
+Kp: -11.02676 (+/- 1.79034)
+Ki: -0.002521 (+/- 0.002828)
