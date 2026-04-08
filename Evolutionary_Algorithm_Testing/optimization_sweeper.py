@@ -139,19 +139,22 @@ class OptimizationSweeper:
         save_plot(lambda: (
             plt.plot(labels, avg_costs, marker='o', color='b'),
             plt.title(f'Avg Cost vs {self.param_label} ({tf_name} | Pop: {pop_size})'),
-            plt.xlabel(self.param_label), plt.ylabel('Average Cost'), plt.xticks(rotation=45)
+            plt.xlabel(self.param_label), plt.ylabel('Average Cost'), plt.xticks(rotation=45),
+            plt.ylim(bottom=0)
         ), 'average_cost_line_plot.png')
 
         save_plot(lambda: (
             plt.boxplot(all_costs, tick_labels=labels, showfliers=True),
             plt.title(f'Cost Distribution ({tf_name} | Pop: {pop_size})'),
-            plt.xlabel(self.param_label), plt.ylabel('Cost'), plt.xticks(rotation=45)
+            plt.xlabel(self.param_label), plt.ylabel('Cost'), plt.xticks(rotation=45),
+            plt.ylim(bottom=0)
         ), 'cost_distribution_boxplot.png')
 
         save_plot(lambda: (
             plt.plot(labels, avg_iters, marker='s', color='g'),
             plt.title(f'Avg Iterations vs {self.param_label} ({tf_name} | Pop: {pop_size})'),
-            plt.xlabel(self.param_label), plt.ylabel('Average Iterations'), plt.xticks(rotation=45)
+            plt.xlabel(self.param_label), plt.ylabel('Average Iterations'), plt.xticks(rotation=45),
+            plt.ylim(bottom=0)
         ), 'average_iterations_line_plot.png')
 
         if any(c is not None for c in curves):
