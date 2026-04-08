@@ -1,4 +1,5 @@
 import sys
+import os
 import collections
 import time
 import matplotlib.pyplot as plt
@@ -12,7 +13,6 @@ from Hardware_Pipeline.controllers import DOController
 # ==========================================
 # 1. VIRTUAL HARDWARE CLASSES
 # ==========================================
-
 class VirtualAquaculturePlant:
     """Simulates the physical DO response using First-Order Plus Dead Time (FOPDT)."""
     def __init__(self, day_tf, night_tf, dt=5.0):
@@ -65,7 +65,7 @@ class MockStrategyManager:
 
 
 # ==========================================
-# 2. AUTO-TUNING INTEGRATION (UPDATED FOR de_optimizer.py)
+# 2. AUTO-TUNING INTEGRATION (FIXED)
 # ==========================================
 
 def auto_tune_gains(tf_name, tf_config):
@@ -96,19 +96,15 @@ def auto_tune_gains(tf_name, tf_config):
     # Initialize the optimizer
     optimizer = DEOptimizer(config, tf_params)
     
-    # optimize_round returns a SciPy OptimizeResult object
-    result = optimizer.optimize_round(round_num=1)
+    # FIX: Unpack the 5-element tuple returned by your optimize_round() method
+    best_kp, best_ki, best_cost, gens, history = optimizer.optimize_round(round_num=1)
     
-    # Extract the optimal parameters from the result's .x array
-    best_kp = result.x[0]
-    best_ki = result.x[1]
-    
-    print(f"[Auto-Tuner] {tf_name} Optimal Gains Found -> Kp: {best_kp:.4f}, Ki: {best_ki:.4f}")
+    print(f"[Auto-Tuner] {tf_name} Optimal Gains Found -> Kp: {best_kp:.4f}, Ki: {best_ki:.4f} (Cost: {best_cost:.4f})")
     return best_kp, best_ki
 
 
 # ==========================================
-# 3. CORE SIMULATION LOOP
+# 3. CORE SIMULATION LOOP (FIXED)
 # ==========================================
 
 def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, sim_duration=86400, dt=5.0):
@@ -118,16 +114,17 @@ def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, sim_du
     actuator = VirtualActuator()
     manager = MockStrategyManager()
     
-    # Initialize your actual Controller from controllers.py
-    # Providing dummy initial_kp and initial_ki which are immediately overwritten
+    # Initialize your actual Controller from controllers.py safely
     controller = DOController(
         name="Sim-DO", 
-        setpoint=7.0,
         strategy_manager=manager, 
-        actuator=actuator,
-        initial_kp=day_gains[0],
-        initial_ki=day_gains[1]
+        actuator=actuator
     )
+    
+    # Set the target DO and initial parameters directly
+    controller.setpoint = 2.5
+    controller.kp = day_gains[0]
+    controller.ki = day_gains[1]
     
     time_history = []
     do_history = []
@@ -150,7 +147,8 @@ def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, sim_du
                 # If adaptive strategy is enabled, swap the PID gains automatically
                 if is_adaptive:
                     print(f"[Simulation] Adaptive Mode: Swapping PID gains to Night optimal.")
-                    controller.kp, controller.ki = night_gains
+                    controller.kp = night_gains[0]
+                    controller.ki = night_gains[1]
                 else:
                     print(f"[Simulation] Non-Adaptive Mode: Maintaining Day PID gains.")
 
@@ -173,10 +171,20 @@ def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, sim_du
 
     return time_history, do_history
 
+
+# ==========================================
+# 4. MAIN EXECUTION & PLOTTING
+# ==========================================
+
 if __name__ == "__main__":
+    
+    # --- CONFIGURATION ---
+    OUTPUT_DIR = "simulation_graphs"  # <-- Set your custom folder name right here
+    # ---------------------
+
     # Define our simulated environment physics
     day_tf = {'K': 1.346, 'tau': 1551.955, 'delay': 104.469}
-    night_tf = {'K': 2.355, 'tau': 3083.590, 'delay': 0.05} 
+    night_tf = {'K': 2.355, 'tau': 3083.590, 'delay': 0.05} # Example: Night responds slower/weaker
 
     # 1. Auto-compute optimal gains using DEOptimizer
     day_kp, day_ki = auto_tune_gains("Daytime", day_tf)
@@ -217,6 +225,12 @@ if __name__ == "__main__":
     plt.ylabel('Dissolved Oxygen (mg/L)')
     plt.legend(loc='lower right')
     plt.grid(True, alpha=0.3)
-    
     plt.tight_layout()
-    plt.show()
+    
+    # 4. Save quietly instead of showing
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    save_path = os.path.join(OUTPUT_DIR, "do_adaptive_vs_non_adaptive.png")
+    plt.savefig(save_path, dpi=300)
+    plt.close()  # Kills the figure completely so it doesn't pop up
+    
+    print(f"\n[Success] Plot successfully saved to {save_path}!")
