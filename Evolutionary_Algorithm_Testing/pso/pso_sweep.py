@@ -1,7 +1,8 @@
 import os
 import numpy as np
 from Evolutionary_Algorithm_Testing.optimization_sweeper import OptimizationSweeper
-from Evolutionary_Algorithm_Testing.ga.ga_optimizer import GAOptimizer 
+from Evolutionary_Algorithm_Testing.pso.pso_optimizer import PSOOptimizer
+# from Evolutionary_Algorithm_Testing.ga.ga_optimizer import GAOptimizer 
 
 if __name__ == "__main__":
     # --- 1. SETUP PATHS ---
@@ -71,19 +72,12 @@ if __name__ == "__main__":
         'values': np.linspace(2.0, 12.0, 11), # Values to sweep through
         'pop_sizes': [50]                     # Populations to test
     }
-
-    ga_sweep_config = {
-        'label': 'Mutation_Rate',
-        'keys': ['mutation_rate'], 
-        'values': [0.01, 0.05, 0.1, 0.15, 0.2],
-        'pop_sizes': [50]
-    }
     
-    ga_sweeper = OptimizationSweeper(
-        optimizer_class=GAOptimizer, 
-        sweep_config=ga_sweep_config,
+    pso_sweeper = OptimizationSweeper(
+        optimizer_class=PSOOptimizer,
+        sweep_config=pso_sweep_config,
         transfer_functions=transfer_functions,
         base_config=base_config,
-        output_dir=os.path.join(SCRIPT_DIR, "GA_SWEEP_MUTATION")
+        output_dir=os.path.join(SCRIPT_DIR, "PSO_SWEEP_PHI")
     )
-    ga_sweeper.run_sweep()
+    pso_sweeper.run_sweep()
