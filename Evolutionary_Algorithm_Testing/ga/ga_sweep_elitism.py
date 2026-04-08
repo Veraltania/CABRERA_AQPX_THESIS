@@ -87,7 +87,7 @@ if __name__ == '__main__':
     # 4. Configure Dynamic Sweep Parameters
     start_value = 0.0
     end_value = 0.20
-    num_bins = 10
+    num_bins = 11
     
     # Dynamically generate evenly spaced values (e.g., 0.0, 0.05, 0.1, 0.15, 0.2)
     # .tolist() ensures they are native Python floats for PyGAD/multiprocessing safety

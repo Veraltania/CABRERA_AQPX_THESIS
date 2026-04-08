@@ -80,6 +80,6 @@ if __name__ == "__main__":
         sweep_config=pso_sweep_config,
         transfer_functions=transfer_functions,
         base_config=base_config,
-        output_dir=os.path.join(SCRIPT_DIR, "PSO_SWEEP_PHI")
+        output_dir=os.path.join(SCRIPT_DIR, "PSO_SWEEP_PHI_TEST")
     )
     pso_sweeper.run_sweep()
