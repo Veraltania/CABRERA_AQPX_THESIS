@@ -1,7 +1,0 @@
---- PercentageElitismGA EXPERIMENT SUMMARY ---
-Total Rounds: 50
-Average Iterations: 38.3
-Average Cost:  1686.50
------------------------------
-Kp: 10.13440 (+/- 1.21455)
-Ki: 0.004224 (+/- 0.000644)
