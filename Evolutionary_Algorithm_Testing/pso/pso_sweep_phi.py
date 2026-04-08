@@ -1,7 +1,7 @@
 import os
 import numpy as np
 from Evolutionary_Algorithm_Testing.optimization_sweeper import OptimizationSweeper
-from Evolutionary_Algorithm_Testing.pso.pso_optimizer import PSOOptimizer
+from pso_optimizer import PSOOptimizer
 
 if __name__ == "__main__":
     SWEEP_START = 2.0

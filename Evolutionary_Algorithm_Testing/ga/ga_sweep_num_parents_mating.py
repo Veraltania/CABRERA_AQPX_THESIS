@@ -1,7 +1,7 @@
 import os
 import numpy as np
 from ga_optimizer import GAOptimizer
-from optimization_sweeper import OptimizationSweeper
+from Evolutionary_Algorithm_Testing.optimization_sweeper import OptimizationSweeper
 
 # --- 1. THE WRAPPER CLASS ---
 class PercentageParentsGAOptimizer(GAOptimizer):
