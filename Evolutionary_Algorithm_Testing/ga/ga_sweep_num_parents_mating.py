@@ -2,6 +2,7 @@ import os
 import numpy as np
 from ga_optimizer import GAOptimizer
 from Evolutionary_Algorithm_Testing.optimization_sweeper import OptimizationSweeper
+import sys
 
 # --- 1. THE WRAPPER CLASS ---
 class PercentageParentsGAOptimizer(GAOptimizer):
@@ -23,6 +24,7 @@ class PercentageParentsGAOptimizer(GAOptimizer):
 
 if __name__ == '__main__':
     sweep_type = "ga_sweep_parents"
+    SCRIPT_DIR = os.path.dirname(os.path.abspath(sys.argv[0]))
 
     transfer_functions = {
         f"{sweep_type}_do_feb5_daytime": {
@@ -100,7 +102,7 @@ if __name__ == '__main__':
         'pop_sizes': [50]  
     }
 
-    output_dir = os.path.join(os.getcwd(), 'GA_SWEEP_PARENTS_PCT')
+    output_dir = os.path.join(SCRIPT_DIR, 'GA_SWEEP_PARENTS_PCT')
 
     sweeper = OptimizationSweeper(
         optimizer_class=PercentageParentsGAOptimizer, 

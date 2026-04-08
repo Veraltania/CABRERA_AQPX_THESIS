@@ -2,13 +2,14 @@ import os
 import numpy as np
 from Evolutionary_Algorithm_Testing.optimization_sweeper import OptimizationSweeper
 from pso_optimizer import PSOOptimizer
+import sys
 
 if __name__ == "__main__":
     SWEEP_START = 2.0
     SWEEP_END = 12.0
     SWEEP_BINS = 11
 
-    SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+    SCRIPT_DIR = os.path.dirname(os.path.abspath(sys.argv[0]))
 
     sweep_type = "pso_sweep_phi"
 
