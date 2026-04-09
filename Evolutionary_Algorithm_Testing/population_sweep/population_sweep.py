@@ -147,7 +147,7 @@ if __name__ == "__main__":
 
     total_cores = multiprocessing.cpu_count()
 
-    # Calculate 50% and ensure it's at least 1 core
+    # Calculate 75% and ensure it's at least 1 core
     num_cores = max(1, math.floor(total_cores * 0.75))
 
     START_POP = 10
@@ -156,7 +156,7 @@ if __name__ == "__main__":
 
     shared_config = {
         "patience_limit": 25,
-        "max_iters": 200,
+        "max_iters": 100,
         "tol": 0.01,
         "improvement_tol": 0.01,
         "n_rounds": 50
@@ -171,13 +171,13 @@ if __name__ == "__main__":
         },
         "DE": {
             "mutation": (0.5, 1.0),
-            "recombination": 0.745,
+            "recombination": 0.75,
             "strategy": "best1bin"
         },
         "PSO": {
             "c1": 2.0,
             "c2": 2.0,
-            "w": 0.6,
+            "w": 0.8,
             "v_min": -1.0,
             "v_max": 1.0
         }
@@ -187,115 +187,64 @@ if __name__ == "__main__":
     if pop_sizes[-1] != END_POP: pop_sizes.append(END_POP)
 
     batch_dir = "BATCH_DO_OPENLOOP"
+    sweep_type = "population_sweep"
 
-    transfer_functions_to_run = [
-        {
-            "base_dir": "results_population_sweep_do_feb5_daytime",
-            "tf_params": {
-                'tf_num': [1.359],
-                'tf_den': [1745.481, 1],
-                'tf_delay': 0.0,
-                'tf_n_pade': 2,
-                'computed_delay': 0.05,
-                'is_reverse_acting': False,
-                'max_kp': 100.0
-            }
+    transfer_functions = {
+        f"{sweep_type}_do_feb5_daytime": {
+            'tf_num': [1.346], 'tf_den': [1551.955, 1], 'tf_delay': 0.0,
+            'tf_n_pade': 2, 'computed_delay': 0.05, 'is_reverse_acting': False, 'max_kp': 100.0
         },
-        {
-            "base_dir": "results_population_sweep_do_feb7_daytime",
-            "tf_params": {
-                'tf_num': [1.151],
-                'tf_den': [3000.660, 1],
-                'tf_delay': 0.0,
-                'tf_n_pade': 2,
-                'computed_delay': 0.05,
-                'is_reverse_acting': False,
-                'max_kp': 100.0
-            }
+        f"{sweep_type}_do_feb7_daytime": {
+            'tf_num': [1.133], 'tf_den': [2833.82, 1], 'tf_delay': 0.0,
+            'tf_n_pade': 2, 'computed_delay': 0.05, 'is_reverse_acting': False, 'max_kp': 100.0
         },
-        {
-            "base_dir": "results_population_sweep_do_feb25_daytime",
-            "tf_params": {
-                'tf_num': [2.217],
-                'tf_den': [2822.288, 1],
-                'tf_delay': 0.0,
-                'tf_n_pade': 2,
-                'computed_delay': 0.05,
-                'is_reverse_acting': False,
-                'max_kp': 100.0
-            }
+        f"{sweep_type}_do_feb25_daytime": {
+            'tf_num': [2.287], 'tf_den': [3010.296, 1], 'tf_delay': 0.0,
+            'tf_n_pade': 2, 'computed_delay': 0.05, 'is_reverse_acting': False, 'max_kp': 100.0
         },
-        {
-            "base_dir": "results_population_sweep_do_feb26_daytime",
-            "tf_params": {
-                'tf_num': [2.200],
-                'tf_den': [2770.238, 1],
-                'tf_delay': 0.0,
-                'tf_n_pade': 2,
-                'computed_delay': 0.05,
-                'is_reverse_acting': False,
-                'max_kp': 100.0
-            }
+        f"{sweep_type}_do_feb26_daytime": {
+            'tf_num': [2.430], 'tf_den': [3492.589, 1], 'tf_delay': 0.0,
+            'tf_n_pade': 2, 'computed_delay': 0.05, 'is_reverse_acting': False, 'max_kp': 100.0
         },
-        {
-            "base_dir": "results_population_sweep_do_feb5_nighttime",
-            "tf_params": {
-                'tf_num': [2.336],
-                'tf_den': [3086.933, 1],
-                'tf_delay': 0.0,
-                'tf_n_pade': 2,
-                'computed_delay': 0.05,
-                'is_reverse_acting': False,
-                'max_kp': 100.0
-            }
+        f"{sweep_type}_do_feb5_nighttime": {
+            'tf_num': [2.355], 'tf_den': [3083.590, 1], 'tf_delay': 0.0,
+            'tf_n_pade': 2, 'computed_delay': 0.05, 'is_reverse_acting': False, 'max_kp': 100.0
         },
-        {
-            "base_dir": "results_population_sweep_do_feb7_nighttime",
-            "tf_params": {
-                'tf_num': [2.037],
-                'tf_den': [4471.466, 1],
-                'tf_delay': 0.0,
-                'tf_n_pade': 2,
-                'computed_delay': 0.05,
-                'is_reverse_acting': False,
-                'max_kp': 100.0
-            }
+        f"{sweep_type}_do_feb7_nighttime": {
+            'tf_num': [2.049], 'tf_den': [4499.996, 1], 'tf_delay': 0.0,
+            'tf_n_pade': 2, 'computed_delay': 0.05, 'is_reverse_acting': False, 'max_kp': 100.0
         },
-        {
-            "base_dir": "results_population_sweep_do_feb25_nighttime",
-            "tf_params": {
-                'tf_num': [3.898],
-                'tf_den': [2999.003, 1],
-                'tf_delay': 0.0,
-                'tf_n_pade': 2,
-                'computed_delay': 0.05,
-                'is_reverse_acting': False,
-                'max_kp': 100.0
-            }
+        f"{sweep_type}_do_feb25_nighttime": {
+            'tf_num': [3.923], 'tf_den': [3012.232, 1], 'tf_delay': 0.0,
+            'tf_n_pade': 2, 'computed_delay': 0.05, 'is_reverse_acting': False, 'max_kp': 100.0
         },
-        {
-            "base_dir": "results_population_sweep_do_feb26_nighttime",
-            "tf_params": {
-                'tf_num': [3.105],
-                'tf_den': [2518.921, 1],
-                'tf_delay': 1446.014,
-                'tf_n_pade': 2,
-                'computed_delay': 0.05,
-                'is_reverse_acting': False,
-                'max_kp': 100.0
-            }
+        f"{sweep_type}_do_feb26_nighttime": {
+            'tf_num': [3.132], 'tf_den': [2530.052, 1], 'tf_delay': 0,
+            'tf_n_pade': 2, 'computed_delay': 0.05, 'is_reverse_acting': False, 'max_kp': 100.0
+        },
+        f"{sweep_type}_tds_feb09_10": {
+            'tf_num': [-21.082], 'tf_den': [71160.91, 1], 'tf_delay': 0,
+            'tf_n_pade': 2, 'computed_delay': 0.05, 'is_reverse_acting': True, 'max_kp': -100.0
+        },
+        f"{sweep_type}_tds_feb10_11": {
+            'tf_num': [-15.519], 'tf_den': [40156.08, 1], 'tf_delay': 0,
+            'tf_n_pade': 2, 'computed_delay': 0.05, 'is_reverse_acting': True, 'max_kp': -100.0
+        },
+        f"{sweep_type}_tds_feb11_12": {
+            'tf_num': [-12.458], 'tf_den': [16825.29, 1], 'tf_delay': 0,
+            'tf_n_pade': 2, 'computed_delay': 0.05, 'is_reverse_acting': True, 'max_kp': -100.0
         }
-    ]
+    }
 
     total_global_start_time = time.time()
     script_dir = Path(__file__).parent.resolve()
 
     with multiprocessing.Pool(processes=num_cores) as pool:
-        for idx, tf_config in enumerate(transfer_functions_to_run):
-            BASE_OUTPUT_DIR = script_dir / batch_dir / tf_config["base_dir"]
+        for idx, (base_dir, tf_params) in enumerate(transfer_functions.items()):
+            BASE_OUTPUT_DIR = script_dir / batch_dir / base_dir
             
             print(f"\n{'='*60}")
-            print(f"PROCESSING TRANSFER FUNCTION {idx + 1} OF {len(transfer_functions_to_run)}")
+            print(f"PROCESSING TRANSFER FUNCTION {idx + 1} OF {len(transfer_functions)}")
             print(f"Output Directory: {BASE_OUTPUT_DIR}")
             print(f"{'='*60}")
 
@@ -304,7 +253,7 @@ if __name__ == "__main__":
             # --- MACRO-LEVEL RESUME CHECK ---
             existing_checkpoints = glob.glob(os.path.join(BASE_OUTPUT_DIR, "checkpoint_sweep_*.csv"))
             if existing_checkpoints:
-                print(f"[RESUME] Skipping TF {idx + 1} ({tf_config['base_dir']}): Master checkpoint already exists.")
+                print(f"[RESUME] Skipping TF {idx + 1} ({base_dir}): Master checkpoint already exists.")
                 continue
             # --------------------------------
 
@@ -314,7 +263,7 @@ if __name__ == "__main__":
             print(f"--- SWEEP STARTED: {start_datetime.strftime('%Y-%m-%d %H:%M:%S')} ---")
             print(f"Running on {num_cores} cores to prevent Memory Overflows...")
 
-            tasks = [(algo, size, shared_config, tf_config["tf_params"], BASE_OUTPUT_DIR, algo_specific_configs.get(algo, {}))
+            tasks = [(algo, size, shared_config, tf_params, BASE_OUTPUT_DIR, algo_specific_configs.get(algo, {}))
                      for algo in ALGO_MAP.keys()
                      for size in pop_sizes]
 

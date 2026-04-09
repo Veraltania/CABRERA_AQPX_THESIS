@@ -1,0 +1,7 @@
+--- GA EXPERIMENT SUMMARY ---
+Total Rounds: 50
+Average Iterations: 34.4
+Average Cost:  852.04
+-----------------------------
+Kp: 10.33518 (+/- 1.34074)
+Ki: 0.003795 (+/- 0.001294)
