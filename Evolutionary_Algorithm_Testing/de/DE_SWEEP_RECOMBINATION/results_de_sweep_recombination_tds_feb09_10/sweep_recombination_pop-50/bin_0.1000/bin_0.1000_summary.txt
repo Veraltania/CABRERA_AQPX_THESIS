@@ -1,0 +1,7 @@
+--- RecombinationSweepDE EXPERIMENT SUMMARY ---
+Total Rounds: 50
+Average Iterations: 30.3
+Average Cost:  1741.99
+-----------------------------
+Kp: -10.00999 (+/- 0.36961)
+Ki: -0.000405 (+/- 0.001042)
