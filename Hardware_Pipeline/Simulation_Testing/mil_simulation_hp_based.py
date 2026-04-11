@@ -143,7 +143,7 @@ def fit_closed_loop_fopdt(t_arr, u_arr, y_arr):
         
     def objective_function(params):
         y_sim = simulate_fopdt(params)
-        return np.mean((dy - y_sim)**2) # Mean Squared Error
+        return np.mean(np.abs(dy - y_sim))
         
     # Bounds for the optimizer to prevent physically impossible plants
     # K: (0.1 to 10), Tau: (10s to 10,000s), Delay: (0s to 500s)
@@ -374,7 +374,7 @@ def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, target
 
 if __name__ == "__main__":
     OUTPUT_DIR_NAME = "simulation_graphs"  
-    TARGET_DO_SETPOINT = 2.0  
+    TARGET_DO_SETPOINT = 1.5  
     SIM_DURATION = 86400 
     DT_STEP = 5.0
     PWM_WINDOW_MINUTES = 60 
