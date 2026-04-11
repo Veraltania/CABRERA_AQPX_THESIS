@@ -200,7 +200,7 @@ if __name__ == "__main__":
     ADD_SENSOR_NOISE = True
     SENSOR_NOISE_STD = 0.05
     ADD_PROCESS_NOISE = True
-    PROCESS_NOISE_STD = 0.01 
+    PROCESS_NOISE_STD = 0.025 
     SEED_VALUE = random.random()
 
     # --- BASELINE PLANT CONFIGURATION ---

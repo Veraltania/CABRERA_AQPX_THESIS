@@ -229,16 +229,17 @@ def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, target
                 
                 # Check if buffer is full and variance is low enough
                 if len(do_buffer) == stability_window:
-                    if (max(do_buffer) - min(do_buffer)) <= 0.05: # 0.05 mg/L max variance threshold
+                    # Check if the standard deviation is near the noise floor
+                    if np.std(do_buffer) <= (sensor_noise_std * 1.2): # Add a 20% margin
                         is_stable = True
                         break
                         
             if not is_stable:
-                print("[MIL Sim] ❌ Retune aborted. System could not stabilize at the setpoint.")
+                print("[MIL Sim] Retune aborted. System could not stabilize at the setpoint.")
                 controller.retune_thread_active = False
                 return
                 
-            print(f"[MIL Sim] ✅ System stabilized. Executing closed-loop step test...")
+            print(f"[MIL Sim] System stabilized. Executing closed-loop step test...")
 
             # ==================================================
             # 2. EXCITATION STEP TEST (FIXED DURATION)
@@ -251,8 +252,12 @@ def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, target
             
             bump_t, bump_u, bump_y = [], [], []
             
-            # Force a massive 7-hour step test to guarantee steady-state K observation
-            test_duration_seconds = 7200 
+            # Manually record the true steady-state baseline BEFORE the proportional kick
+            bump_t.append(v_clock.get_time())
+            bump_u.append(actuator.duty_cycle)
+            bump_y.append(plant.current_do)
+            
+            test_duration_seconds = 3600 
             total_steps = int(test_duration_seconds / dt)
             print(f"[MIL Sim] Running fixed-duration closed-loop step test for {test_duration_seconds / 3600:.2f} hours...")
             
@@ -348,9 +353,9 @@ if __name__ == "__main__":
     DT_STEP = 5.0
     PWM_WINDOW_MINUTES = 60 
 
-    ADD_SENSOR_NOISE = False
+    ADD_SENSOR_NOISE = True
     SENSOR_NOISE_STD = 0.05 
-    ADD_PROCESS_NOISE = False
+    ADD_PROCESS_NOISE = True
     PROCESS_NOISE_STD = 0.005 
     SEED_VALUE = 42
 
