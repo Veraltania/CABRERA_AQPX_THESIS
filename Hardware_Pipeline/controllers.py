@@ -23,7 +23,14 @@ class ParameterController(ABC):
         self.foptd_tau = init_tau
         self.foptd_delay = init_delay
 
-        self.log_file = f"{self.name.lower().replace(' ', '_')}_state.csv"
+        # --- Directory Management ---
+        self.base_output_dir = "output"
+        name_slug = self.name.lower().replace(' ', '_')
+        
+        # State Logs
+        self.log_file = os.path.join(self.base_output_dir, f"{name_slug}_state.csv")
+        os.makedirs(os.path.dirname(self.log_file), exist_ok=True)
+
         self.last_time = time.time()
         self.dt = 5.0
 
@@ -37,7 +44,7 @@ class ParameterController(ABC):
         self.is_retuning = False
         self.retuning_file = None
         self.target_column = None
-        self.retuning_folder = f"retuning_logs/{self.name.lower().replace(' ', '_')}"
+        self.retuning_folder = os.path.join(self.base_output_dir, "retuning_logs", name_slug)
         self.current_process_value = 0.0
         self.current_strategy = self.strategy_manager.get_active_strategy()
         self.retune_thread_active = False
@@ -48,7 +55,7 @@ class ParameterController(ABC):
     def start_retuning_session(self, target_column: str):
         """Initializes folders and the CSV file for a retuning test."""
         if not os.path.exists(self.retuning_folder):
-            os.makedirs(self.retuning_folder)
+            os.makedirs(self.retuning_folder, exist_ok=True)
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.retuning_file = os.path.join(self.retuning_folder, f"retune_{timestamp}.csv")
@@ -279,8 +286,11 @@ class ParameterController(ABC):
                     'recombination': 0.745,
                     'strategy': 'best1bin',
                     'n_rounds': 1,
-                    'output_folder': f"online_tuning_logs/{self.name.lower().replace(' ', '_')}"
+                    'output_folder': os.path.join(self.base_output_dir, "online_tuning_logs", self.name.lower().replace(' ', '_'))
                 }
+
+                # Ensure output_folder exists for DEOptimizer
+                os.makedirs(de_config['output_folder'], exist_ok=True)
 
                 # Run Differential Evolution
                 print(f"[{self.name}] Running Differential Evolution to optimize PI gains...")
