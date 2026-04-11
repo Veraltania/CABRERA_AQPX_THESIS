@@ -83,7 +83,7 @@ class ParameterController(ABC):
         step_size = 0.2 
         new_setpoint = old_setpoint + step_size
         
-        print(f"[{self.name}] 🛑 Hardware Adaptive Retune Triggered!")
+        print(f"[{self.name}] Hardware Adaptive Retune Triggered!")
         print(f"[{self.name}] Running closed-loop step test to {new_setpoint:.2f}...")
         
         self.start_retuning_session(self.target_column)
@@ -209,8 +209,8 @@ class DOController(ParameterController):
         if current_do is not None:
             pi_output = self.calculate_pi(current_do)
 
-            print(f"[{self.name}] DO: {current_do} mg/L")
-            print(f"Target: {self.setpoint} | Control Signal: {pi_output:.2f}\n")
+            # print(f"[{self.name}] DO: {current_do} mg/L")
+            # print(f"Target: {self.setpoint} | Control Signal: {pi_output:.2f}\n")
 
             self.actuator.set_duty_cycle(pi_output)
             
