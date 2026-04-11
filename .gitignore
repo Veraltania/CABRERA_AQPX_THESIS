@@ -25,9 +25,6 @@ figures/
 output/
 temp/
 aqpx_neo/
-retuning_logs/
-Hardware_Pipeline/controller_logs/
-controller_logs/
 aqpx_neo_mac/
 Transfer_Function_Modeling/data_calibrated/
 Transfer_Function_Modeling/data/
