@@ -118,7 +118,7 @@ def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, target
 
     virtual_time = 0.0 
 
-    print(f"\n--- Starting {'ADAPTIVE' if is_adaptive else 'NON-ADAPTIVE'} Simulation ---")
+    print(f"--- Starting {'ADAPTIVE' if is_adaptive else 'NON-ADAPTIVE'} Simulation ---")
     
     with patch('time.time', side_effect=lambda: virtual_time):
         for t in range(0, sim_duration, int(dt)):
@@ -158,6 +158,32 @@ def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, target
 
     return time_history, do_history, u_history
 
+def generate_binary_pwm(t_hist_hours, u_hist, window_minutes):
+    """Translates the duty cycle (0-1) into an ON/OFF signal using Sample-and-Hold."""
+    window_hours = window_minutes / 60.0
+    binary_signal = []
+    
+    current_window_start = 0.0
+    # Sample the very first duty cycle to start
+    locked_u = u_hist[0] if u_hist else 0.0 
+    
+    for t, u in zip(t_hist_hours, u_hist):
+        # 1. Check if we've crossed into a new window
+        if t >= current_window_start + window_hours - 1e-5:
+            current_window_start += window_hours
+            locked_u = u  # Lock in the new duty cycle
+            
+        # 2. Calculate time elapsed purely within the CURRENT window
+        time_in_window = t - current_window_start
+        
+        # 3. Compare against the LOCKED duty cycle
+        if time_in_window <= (locked_u * window_hours):
+            binary_signal.append(1)
+        else:
+            binary_signal.append(0)
+            
+    return binary_signal
+
 
 # ==========================================
 # 4. MAIN EXECUTION & PLOTTING
@@ -165,32 +191,42 @@ def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, target
 
 if __name__ == "__main__":
     OUTPUT_DIR_NAME = "simulation_graphs"  
-    TARGET_DO_SETPOINT = 2.2
+    TARGET_DO_SETPOINT = 2.0
     SIM_DURATION = 86400 
     DT_STEP = 5.0
-    PWM_WINDOW_MINUTES = 10 # For generating the ON/OFF signal
+    PWM_WINDOW_MINUTES = 30 # For generating the ON/OFF signal
 
     # --- NOISE CONFIGURATION ---
-    # Sensor Noise: Simulates electrical interference or poor probe readings. 
     ADD_SENSOR_NOISE = True
-    SENSOR_NOISE_STD = 0.5
-    
-    # Process Noise: Simulates physical changes (fish breathing erratically, wind).
+    SENSOR_NOISE_STD = 0.05
     ADD_PROCESS_NOISE = True
-    PROCESS_NOISE_STD = 0.005 
-    
-    # Constant seed for apples-to-apples comparison
-    SEED_VALUE = 42
-    # ---------------------------
+    PROCESS_NOISE_STD = 0.01 
+    SEED_VALUE = random.random()
 
-    day_tf = {'K': 1.346, 'tau': 1551.955, 'delay': 104.469}
-    night_tf = {'K': 2.355, 'tau': 3083.590, 'delay': 0.05}
+    # --- BASELINE PLANT CONFIGURATION ---
+    day_tf = {'K': 1.133, 'tau': 2833.82, 'delay': 0.05}
+    night_tf = {'K': 2.049, 'tau': 4499.996, 'delay': 0.05}
 
+    HARDCODED_SCENARIOS = [
+        {
+            "name": "MATLAB Auto-Tuned (Adaptive)",
+            "is_adaptive": True, 
+            "day_tf": day_tf,     
+            "night_tf": night_tf,
+            "day_gains": (0.92, 0.000974),  
+            "night_gains": (0.92, 0.000974), 
+            "color": "orange",
+            "linestyle": "-."
+        }
+    ]
+
+    # 1. Run DE Auto-Tuner for your AI models
     day_kp, day_ki = auto_tune_gains("Daytime", day_tf)
     night_kp, night_ki = auto_tune_gains("Nighttime", night_tf)
 
+    # 2. Run Non-Adaptive Simulation
     print(f"\nRunning Baseline (Non-Adaptive) Model with Setpoint {TARGET_DO_SETPOINT}...")
-    random.seed(SEED_VALUE)  # Ensure identical noise sequence
+    random.seed(SEED_VALUE)  
     t_non_adaptive, do_non_adaptive, u_non_adaptive = run_simulation(
         is_adaptive=False, day_tf=day_tf, night_tf=night_tf, 
         day_gains=(day_kp, day_ki), night_gains=(night_kp, night_ki),
@@ -199,8 +235,9 @@ if __name__ == "__main__":
         add_process_noise=ADD_PROCESS_NOISE, process_noise_std=PROCESS_NOISE_STD
     )
 
+    # 3. Run Adaptive Simulation
     print(f"\nRunning Proposed (Adaptive) Model with Setpoint {TARGET_DO_SETPOINT}...")
-    random.seed(SEED_VALUE)  # Ensure identical noise sequence
+    random.seed(SEED_VALUE)  
     t_adaptive, do_adaptive, u_adaptive = run_simulation(
         is_adaptive=True, day_tf=day_tf, night_tf=night_tf, 
         day_gains=(day_kp, day_ki), night_gains=(night_kp, night_ki),
@@ -209,6 +246,33 @@ if __name__ == "__main__":
         add_process_noise=ADD_PROCESS_NOISE, process_noise_std=PROCESS_NOISE_STD
     )
 
+    # 4. Run Hardcoded Scenarios (e.g. MATLAB)
+    hardcoded_results = []
+    for scenario in HARDCODED_SCENARIOS:
+        print(f"\nRunning Hardcoded Model: {scenario['name']}...")
+        random.seed(SEED_VALUE)
+        t_hc, do_hc, u_hc = run_simulation(
+            is_adaptive=scenario['is_adaptive'],
+            day_tf=scenario['day_tf'],
+            night_tf=scenario['night_tf'],
+            day_gains=scenario['day_gains'],
+            night_gains=scenario['night_gains'],
+            target_setpoint=TARGET_DO_SETPOINT, sim_duration=SIM_DURATION, dt=DT_STEP,
+            add_sensor_noise=ADD_SENSOR_NOISE, sensor_noise_std=SENSOR_NOISE_STD,
+            add_process_noise=ADD_PROCESS_NOISE, process_noise_std=PROCESS_NOISE_STD
+        )
+        
+        # Calculate PWM binary signal and total off hours
+        binary_hc = generate_binary_pwm(t_hc, u_hc, PWM_WINDOW_MINUTES)
+        off_hours_hc = binary_hc.count(0) * (DT_STEP / 3600.0)
+        
+        hardcoded_results.append({
+            "name": scenario['name'],
+            "t": t_hc, "do": do_hc, "binary": binary_hc, "off_hours": off_hours_hc,
+            "color": scenario['color'], "linestyle": scenario['linestyle']
+        })
+
+    # Setup directories
     script_dir = os.path.dirname(os.path.abspath(__file__))
     output_dir = os.path.join(script_dir, OUTPUT_DIR_NAME)
     os.makedirs(output_dir, exist_ok=True)
@@ -217,14 +281,20 @@ if __name__ == "__main__":
     # PLOT 1: DO Comparison
     # ---------------------------------------------------------
     plt.figure(figsize=(12, 6))
-    plt.plot(t_non_adaptive, do_non_adaptive, label='Non-Adaptive (True DO)', color='red', linestyle='--', alpha=0.8)
-    plt.plot(t_adaptive, do_adaptive, label='Adaptive (True DO)', color='blue', linewidth=2, alpha=0.8)
+    plt.plot(t_non_adaptive, do_non_adaptive, label='DE Non-Adaptive (True DO)', color='red', linestyle='--', alpha=0.8)
+    plt.plot(t_adaptive, do_adaptive, label='DE Adaptive (True DO)', color='blue', linewidth=2, alpha=0.8)
+    
+    # Plot hardcoded scenarios
+    for res in hardcoded_results:
+        plt.plot(res["t"], res["do"], label=f'{res["name"]} (True DO)', 
+                 color=res["color"], linestyle=res["linestyle"], linewidth=2, alpha=0.8)
+
     plt.axhline(y=TARGET_DO_SETPOINT, color='green', linestyle=':', label=f'Target Setpoint ({TARGET_DO_SETPOINT})')
     plt.axvline(x=12.0, color='gray', linestyle='-', alpha=0.5)
     plt.text(5, max(max(do_non_adaptive), max(do_adaptive)) - 0.5, 'DAYTIME', fontsize=12, fontweight='bold', alpha=0.6)
     plt.text(17, max(max(do_non_adaptive), max(do_adaptive)) - 0.5, 'NIGHTTIME', fontsize=12, fontweight='bold', alpha=0.6)
     
-    plt.title('Simulated DO Control: Adaptive vs Non-Adaptive PID (With Disturbance/Noise)')
+    plt.title('Simulated DO Control: Algorithm Comparison (With Disturbance/Noise)')
     plt.xlabel('Time (Hours)')
     plt.ylabel('Dissolved Oxygen (mg/L)')
     plt.ylim(bottom=0) 
@@ -232,79 +302,69 @@ if __name__ == "__main__":
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
     
-    do_save_path = os.path.join(output_dir, "do_adaptive_vs_non_adaptive.png")
+    do_save_path = os.path.join(output_dir, "do_comparison_all.png")
     plt.savefig(do_save_path, dpi=300)
     plt.close()
 
     # ---------------------------------------------------------
     # PLOT 2: Literal ON/OFF Control Signal
     # ---------------------------------------------------------
-    def generate_binary_pwm(t_hist_hours, u_hist, window_minutes):
-        """Translates the duty cycle (0-1) into an ON/OFF signal using Sample-and-Hold."""
-        window_hours = window_minutes / 60.0
-        binary_signal = []
-        
-        current_window_start = 0.0
-        # Sample the very first duty cycle to start
-        locked_u = u_hist[0] if u_hist else 0.0 
-        
-        for t, u in zip(t_hist_hours, u_hist):
-            # 1. Check if we've crossed into a new window
-            if t >= current_window_start + window_hours - 1e-5:
-                current_window_start += window_hours
-                locked_u = u  # Lock in the new duty cycle
-                
-            # 2. Calculate time elapsed purely within the CURRENT window
-            time_in_window = t - current_window_start
-            
-            # 3. Compare against the LOCKED duty cycle
-            if time_in_window <= (locked_u * window_hours):
-                binary_signal.append(1)
-            else:
-                binary_signal.append(0)
-                
-        return binary_signal
-    
     binary_non_adaptive = generate_binary_pwm(t_non_adaptive, u_non_adaptive, PWM_WINDOW_MINUTES)
     binary_adaptive = generate_binary_pwm(t_adaptive, u_adaptive, PWM_WINDOW_MINUTES)
 
-    # Calculate total OFF time in hours (count of 0s * dt in hours)
     dt_in_hours = DT_STEP / 3600.0
     off_hours_non_adaptive = binary_non_adaptive.count(0) * dt_in_hours
     off_hours_adaptive = binary_adaptive.count(0) * dt_in_hours
 
-    # 2. Create the figure
-    plt.figure(figsize=(12, 8))
+    # Dynamically scale plot height based on number of scenarios
+    total_subplots = 2 + len(hardcoded_results)
+    plt.figure(figsize=(12, 4 * total_subplots))
 
-    # Top Subplot: Non-Adaptive
-    plt.subplot(2, 1, 1)
-    label_na = f'Non-Adaptive (Total OFF: {off_hours_non_adaptive:.2f} hrs)'
+    # Subplot 1: Non-Adaptive
+    plt.subplot(total_subplots, 1, 1)
+    label_na = f'DE Non-Adaptive (Total OFF: {off_hours_non_adaptive:.2f} hrs)'
     plt.step(t_non_adaptive, binary_non_adaptive, color='red', where='post', alpha=0.8)
     plt.fill_between(t_non_adaptive, 0, binary_non_adaptive, step='post', color='red', alpha=0.3, label=label_na)
     plt.axvline(x=12.0, color='gray', linestyle='-', alpha=0.5)
-    plt.title(f'Non-Adaptive ON/OFF Control Signal ({PWM_WINDOW_MINUTES}-min windows)')
+    plt.title(f'DE Non-Adaptive ON/OFF Control Signal ({PWM_WINDOW_MINUTES}-min windows)')
     plt.ylabel('State (1=ON, 0=OFF)')
     plt.yticks([0, 1])
     plt.legend(loc='upper right')
     plt.grid(True, alpha=0.3)
 
-    # Bottom Subplot: Adaptive
-    plt.subplot(2, 1, 2)
-    label_a = f'Adaptive (Total OFF: {off_hours_adaptive:.2f} hrs)'
+    # Subplot 2: Adaptive
+    plt.subplot(total_subplots, 1, 2)
+    label_a = f'DE Adaptive (Total OFF: {off_hours_adaptive:.2f} hrs)'
     plt.step(t_adaptive, binary_adaptive, color='blue', where='post', alpha=0.8)
     plt.fill_between(t_adaptive, 0, binary_adaptive, step='post', color='blue', alpha=0.3, label=label_a)
     plt.axvline(x=12.0, color='gray', linestyle='-', alpha=0.5)
-    plt.title(f'Adaptive ON/OFF Control Signal ({PWM_WINDOW_MINUTES}-min windows)')
-    plt.xlabel('Time (Hours)')
+    plt.title(f'DE Adaptive ON/OFF Control Signal ({PWM_WINDOW_MINUTES}-min windows)')
     plt.ylabel('State (1=ON, 0=OFF)')
     plt.yticks([0, 1])
     plt.legend(loc='upper right')
     plt.grid(True, alpha=0.3)
 
+    # Subplots 3+: Hardcoded Scenarios
+    for i, res in enumerate(hardcoded_results):
+        plt.subplot(total_subplots, 1, i + 3)
+        label_hc = f"{res['name']} (Total OFF: {res['off_hours']:.2f} hrs)"
+        plt.step(res["t"], res["binary"], color=res["color"], where='post', alpha=0.8)
+        plt.fill_between(res["t"], 0, res["binary"], step='post', color=res["color"], alpha=0.3, label=label_hc)
+        plt.axvline(x=12.0, color='gray', linestyle='-', alpha=0.5)
+        plt.title(f"{res['name']} ON/OFF Control Signal ({PWM_WINDOW_MINUTES}-min windows)")
+        plt.ylabel('State (1=ON, 0=OFF)')
+        
+        # Only add the X-axis label to the very bottom subplot
+        if i == len(hardcoded_results) - 1:
+            plt.xlabel('Time (Hours)')
+            
+        plt.yticks([0, 1])
+        plt.legend(loc='upper right')
+        plt.grid(True, alpha=0.3)
+
     plt.tight_layout()
 
-    # 3. Save the plot to your directory
-    pwm_save_path = os.path.join(output_dir, "pwm_on_off_signal.png")
+    pwm_save_path = os.path.join(output_dir, "pwm_on_off_signal_all.png")
     plt.savefig(pwm_save_path, dpi=300)
     plt.close()
 

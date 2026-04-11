@@ -29,6 +29,9 @@ aqpx_neo_mac/
 Transfer_Function_Modeling/data_calibrated/
 Transfer_Function_Modeling/data/
 
+# ignore specific files
+*sim-do_state.csv
+
 # --- OPERATING SYSTEM GARBAGE ---
 Thumbs.db
 Desktop.ini

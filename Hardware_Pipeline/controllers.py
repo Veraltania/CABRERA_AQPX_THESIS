@@ -272,8 +272,8 @@ class ParameterController(ABC):
                 }
 
                 de_config = {
-                    'population_size': 100,
-                    'max_iters': 30,
+                    'population_size': 50,
+                    'max_iters': 100,
                     'patience_limit': 10,
                     'mutation': (0.5, 1.0),
                     'recombination': 0.745,
@@ -327,9 +327,9 @@ class DOController(ParameterController):
         if current_do is not None:
             pi_output = self.calculate_pi(current_do)
 
-            print(f"[{self.name}] DO: {current_do}mg/L \n")
-            print(f"Target: {self.setpoint} \n")
-            print(f"Control Signal: {pi_output:.2f} \n")
+            # print(f"[{self.name}] DO: {current_do}mg/L \n")
+            # print(f"Target: {self.setpoint} \n")
+            # print(f"Control Signal: {pi_output:.2f} \n")
 
             self.actuator.set_duty_cycle(pi_output)
 
