@@ -17,18 +17,33 @@ class TuningStrategy(ABC):
         """Defines if/when the controller should trigger a retune."""
         pass
 
+import os
+import csv
 
-class AdaptiveTuningStrategy(TuningStrategy):
+class AdaptiveTuningStrategy: # Inherits from TuningStrategy
     def __init__(self, window_duration=1800):  # monitor for 30 minutes / 1800 seconds
         self.window_duration = window_duration
         self.window_timer = 0.0
-        self.itae_current_window = 0.0
-        self.itae_previous_window = 0.0
+        
+        # Switched from ITAE to ISE
+        self.ise_current_window = 0.0
+        self.ise_previous_window = 0.0
+        
+        # Physical check
+        self.abs_error_sum = 0.0 
 
-        # FIX: Added flag to prevent immediate retunes on fresh schedule blocks
         self.first_window_completed = False
-        self.noise_floor_itae = 25.0  # Minimum ITAE to be considered "stable"
-        self.shift_threshold = 0.30  # 30% shift required to trigger a retune
+        
+        # FIX: ISE Thresholds. 
+        # A constant noise of 0.1 mg/L squared is 0.01. Over 1800s, ISE = ~18.0
+        # A constant error of 0.5 mg/L squared is 0.25. Over 1800s, ISE = ~450.0
+        self.noise_floor_ise = 100.0  
+        self.shift_threshold = 0.50  # 50% shift required to trigger a retune
+        
+        # Physical sanity check. Do not retune unless average error in window is >= 0.25 mg/L
+        self.min_physical_error_threshold = 0.25 
+        
+        self.cooldown_active = False 
 
     def load_state(self, controller, log_file):
         """Reads the CSV file and reloads the last tuning parameters and PI state."""
@@ -53,12 +68,11 @@ class AdaptiveTuningStrategy(TuningStrategy):
                     controller.foptd_tau = float(last_row.get('foptd_tau', controller.foptd_tau))
                     controller.foptd_delay = float(last_row.get('foptd_delay', controller.foptd_delay))
 
-                    self.itae_current_window = float(last_row.get('itae_current_window', 0.0))
-                    self.itae_previous_window = float(last_row.get('itae_previous_window', 0.0))
+                    self.ise_current_window = float(last_row.get('ise_current_window', 0.0))
+                    self.ise_previous_window = float(last_row.get('ise_previous_window', 0.0))
                     self.window_timer = float(last_row.get('window_timer', 0.0))
 
-                    # FIX: If we successfully loaded a previous baseline from CSV, we can skip the warmup
-                    if self.itae_previous_window > 0:
+                    if self.ise_previous_window > 0:
                         self.first_window_completed = True
 
                     print(f"[{controller.name}-Adaptive] Resumed. Kp: {controller.kp:.3f}. Ki: {controller.ki:.3f}")
@@ -68,39 +82,63 @@ class AdaptiveTuningStrategy(TuningStrategy):
             print(f"[{controller.name}] Unexpected error reading state file: {e}.")
 
     def evaluate_performance(self, controller, error, dt):
-        """Evaluates the window for a 5% ITAE shift."""
+        """Evaluates the window using both ISE shifts and physical MAE limits."""
         self.window_timer += dt
-        self.itae_current_window += self.window_timer * abs(error) * dt
+        
+        # Calculate Absolute Error and Squared Error
+        abs_e = abs(error)
+        squared_e = error ** 2
+        
+        # Integrate over time
+        self.ise_current_window += squared_e * dt
+        self.abs_error_sum += abs_e * dt
 
         if self.window_timer >= self.window_duration:
+            mean_abs_error = self.abs_error_sum / self.window_duration
+            
             print(f"[{controller.name}-Adaptive] {self.window_duration}-Sec Window Closed.")
-            print(f"Current ITAE: {self.itae_current_window:.2f} | Prev ITAE: {self.itae_previous_window:.2f}")
+            print(f"Current ISE: {self.ise_current_window:.2f} | Prev ISE: {self.ise_previous_window:.2f}")
+            print(f"Mean Absolute Error (MAE): {mean_abs_error:.3f} mg/L")
 
-            # FIX: Only evaluate for a retune if we have established a real baseline
-            if not self.first_window_completed:
-                print(
-                    f"[{controller.name}-Adaptive] Baseline established. Skipping retune evaluation for this window.\n")
+            # 1. Enforce cooldown after a bump test
+            if self.cooldown_active:
+                print(f"[{controller.name}-Adaptive] Cooldown active. Ignoring this window's data to allow system to stabilize.\n")
+                self.cooldown_active = False
+                self.first_window_completed = False 
+            
+            # 2. Establish baseline on startup
+            elif not self.first_window_completed:
+                print(f"[{controller.name}-Adaptive] Baseline established. Skipping retune evaluation for this window.\n")
                 self.first_window_completed = True
+            
+            # 3. Main Evaluation logic
             else:
-                # Require the previous window to be above the noise floor
-                if self.itae_previous_window > self.noise_floor_itae:
-                    percent_change = abs(
-                        self.itae_current_window - self.itae_previous_window) / self.itae_previous_window
-                    if percent_change >= self.shift_threshold:
-                        print(
-                            f"[{controller.name}-Adaptive] ITAE shift of {percent_change * 100:.1f}% detected! Triggering EA retune...\n")
+                # Sanity check
+                if mean_abs_error >= self.min_physical_error_threshold:
+                    
+                    if self.ise_previous_window > 0:
+                        percent_change = (self.ise_current_window - self.ise_previous_window) / self.ise_previous_window
+                        
+                        if percent_change >= self.shift_threshold:
+                            print(f"[{controller.name}-Adaptive] ISE shift of {percent_change * 100:.1f}% detected with physical MAE of {mean_abs_error:.2f}! Triggering EA retune...\n")
+                            if hasattr(controller, 'retune'):
+                                controller.retune()
+                                self.cooldown_active = True
+                                
+                    # Fallback: Absolute ISE threshold exceeded
+                    if not self.cooldown_active and self.ise_current_window > (self.noise_floor_ise * 2):
+                        print(f"[{controller.name}-Adaptive] Sustained massive error emerged (ISE Threshold exceeded)! Triggering EA retune...\n")
                         if hasattr(controller, 'retune'):
                             controller.retune()
-                elif self.itae_current_window > max(100.0, self.noise_floor_itae * 2):
-                    print(f"[{controller.name}-Adaptive] Error emerged from ideal state! Triggering EA retune...\n")
-                    if hasattr(controller, 'retune'):
-                        controller.retune()
+                            self.cooldown_active = True
+                else:
+                    print(f"[{controller.name}-Adaptive] MAE ({mean_abs_error:.3f} mg/L) is within physical limits. No retune needed.\n")
 
-            # Shift windows and reset timer.
-            self.itae_previous_window = self.itae_current_window
-            self.itae_current_window = 0.0
+            # Shift windows and reset timers
+            self.ise_previous_window = self.ise_current_window
+            self.ise_current_window = 0.0
+            self.abs_error_sum = 0.0
             self.window_timer = 0.0
-
 
 class StaticTuningStrategy(TuningStrategy):
     def load_state(self, controller, log_file):

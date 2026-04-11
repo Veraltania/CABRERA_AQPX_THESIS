@@ -95,7 +95,7 @@ class ParameterController(ABC):
                 writer = csv.DictWriter(f, fieldnames=[
                     'timestamp', 'setpoint', 'current_val', 'error', 'integral_sum', 'pi_output',
                     'kp', 'ki', 'foptd_gain', 'foptd_tau', 'foptd_delay',
-                    'itae_current_window', 'itae_previous_window', 'window_timer'
+                    'ise_current_window', 'ise_previous_window', 'window_timer'
                 ])
 
                 if not file_exists:
@@ -113,8 +113,8 @@ class ParameterController(ABC):
                     'foptd_gain': self.foptd_gain,
                     'foptd_tau': self.foptd_tau,
                     'foptd_delay': self.foptd_delay,
-                    'itae_current_window': getattr(self.current_strategy, 'itae_current_window', 0.0),
-                    'itae_previous_window': getattr(self.current_strategy, 'itae_previous_window', 0.0),
+                    'ise_current_window': getattr(self.current_strategy, 'ise_current_window', 0.0),
+                    'ise_previous_window': getattr(self.current_strategy, 'ise_previous_window', 0.0),
                     'window_timer': getattr(self.current_strategy, 'window_timer', 0.0)
                 })
         except Exception as e:
@@ -289,7 +289,7 @@ class ParameterController(ABC):
                 # 1 round of optimization
                 best_Kp, best_Ki, cost, iterations_run, _ = optimizer.optimize_round(round_num=1)
 
-                print(f"[{self.name}] Optimization finished in {iterations_run} iterations. ITAE Cost: {cost:.4f}")
+                print(f"[{self.name}] Optimization finished in {iterations_run} iterations. ISE Cost: {cost:.4f}")
 
                 # Apply new parameters
                 self.update_tuning_parameters(best_Kp, best_Ki, extracted_gain, extracted_tau, extracted_delay)
