@@ -106,25 +106,18 @@ def fit_closed_loop_fopdt(t_arr, u_arr, y_arr):
         return y_sim
         
     def objective_function(scaled_params):
-        # Un-scale the parameters so the simulation gets the real, massive values
         K = scaled_params[0]
         tau = scaled_params[1] * 1000.0   
         delay = scaled_params[2] * 10.0   
         
         y_sim = simulate_fopdt(K, tau, delay)
-        
-        # Use ISE (Integral Square Error) to provide smooth gradients
         ise = np.sum((dy - y_sim)**2) * dt
         return ise
         
-    # Bounds are scaled down so the optimizer operates on O(1) numbers
     bnds = ((0.1, 10.0), (0.01, 10.0), (0.0, 50.0)) 
-    # Guess translates to K=1.5, tau=1500.0, delay=10.0
     initial_guess = [1.5, 1.5, 1.0] 
     
     res = minimize(objective_function, initial_guess, bounds=bnds, method='L-BFGS-B')
-    
-    # Scale the results BACK UP before returning them to the rest of your script
     return res.x[0], res.x[1] * 1000.0, res.x[2] * 10.0
 
 # ==========================================
@@ -252,7 +245,6 @@ def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, target
             
             bump_t, bump_u, bump_y = [], [], []
             
-            # Manually record the true steady-state baseline BEFORE the proportional kick
             bump_t.append(v_clock.get_time())
             bump_u.append(actuator.duty_cycle)
             bump_y.append(plant.current_do)
@@ -330,7 +322,6 @@ def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, target
             measured_do = current_do
             if add_sensor_noise: measured_do += random.gauss(0, sensor_noise_std)
 
-            # Let the backend handle MAE calculations cleanly
             fake_payload = {'mcp_wq': {'do': measured_do}}
             controller.process(fake_payload)
             plant.step(actuator.duty_cycle)
@@ -414,6 +405,7 @@ if __name__ == "__main__":
     # PLOT 1: DO Comparison
     # ---------------------------------------------------------
     plt.figure(figsize=(12, 6))
+    ax = plt.gca()
     
     # ----> SHADE RETUNING REGIONS
     added_label = False
@@ -421,6 +413,14 @@ if __name__ == "__main__":
         plt.axvspan(start_h, end_h, color='gold', alpha=0.3, 
                     label='Adaptive Retuning Phase' if not added_label else "")
         added_label = True
+
+    # ----> SHADE DISTURBANCES
+    added_dist_label = False
+    for d_time in SCHEDULED_DISTURBANCES.keys():
+        d_time_h = d_time / 3600.0
+        plt.axvspan(d_time_h, d_time_h + 0.5, color='salmon', alpha=0.3, 
+                    label='Disturbance Applied' if not added_dist_label else "")
+        added_dist_label = True
 
     plt.plot(t_matlab, do_matlab, label='MATLAB Baseline (Hardcoded LTI)', color='black', linestyle=':', linewidth=2, alpha=0.9)
     plt.plot(t_non_adaptive, do_non_adaptive, label='Hardware: Non-Adaptive', color='red', linestyle='--', alpha=0.8)
@@ -430,14 +430,16 @@ if __name__ == "__main__":
     plt.axhline(y=TARGET_DO_SETPOINT + 0.2, color='green', linestyle=':', alpha=0.6, label=f'Retune Bump Target (2.2)')
     
     plt.axvline(x=12.0, color='gray', linestyle='-', alpha=0.5)
-    plt.text(5, max(max(do_non_adaptive), max(do_adaptive)) - 0.5, 'DAYTIME', fontsize=12, fontweight='bold', alpha=0.6)
-    plt.text(17, max(max(do_non_adaptive), max(do_adaptive)) - 0.5, 'NIGHTTIME', fontsize=12, fontweight='bold', alpha=0.6)
     
-    plt.title('Simulated DO Control: MATLAB Baseline vs Hardware Pipelines')
+    # Text labels placed outside the top of the plot using axes coordinates
+    ax.text(0.25, 1.01, 'DAYTIME', transform=ax.transAxes, fontsize=12, fontweight='bold', alpha=0.6, ha='center', va='bottom')
+    ax.text(0.75, 1.01, 'NIGHTTIME', transform=ax.transAxes, fontsize=12, fontweight='bold', alpha=0.6, ha='center', va='bottom')
+    
+    plt.title('Simulated DO Control: MATLAB Baseline vs Hardware Pipelines', y=1.05) # Push title slightly higher to make room for labels
     plt.xlabel('Time (Hours)')
     plt.ylabel('Dissolved Oxygen (mg/L)')
     plt.ylim(bottom=0) 
-    plt.legend(loc='upper right')
+    plt.legend(loc='lower right')
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, "do_comparison_all_3.png"), dpi=300)
@@ -472,27 +474,48 @@ if __name__ == "__main__":
     off_hours_adaptive = binary_adaptive.count(0) * dt_in_hours
 
     plt.figure(figsize=(12, 10))
+    
     plt.subplot(3, 1, 1)
+    added_dist_label = False
+    for d_time in SCHEDULED_DISTURBANCES.keys():
+        d_time_h = d_time / 3600.0
+        plt.axvspan(d_time_h, d_time_h + 0.5, color='salmon', alpha=0.3, 
+                    label='Disturbance Applied' if not added_dist_label else "")
+        added_dist_label = True
+
     plt.step(t_matlab, binary_matlab, color='black', where='post', alpha=0.8)
     plt.fill_between(t_matlab, 0, binary_matlab, step='post', color='black', alpha=0.3, label=f'MATLAB (Total OFF: {off_hours_matlab:.2f} hrs)')
     plt.title(f'MATLAB LTI Control Signal ({PWM_WINDOW_MINUTES}-min windows)')
     plt.ylabel('State (1=ON, 0=OFF)')
     plt.yticks([0, 1])
-    plt.legend(loc='upper right')
+    plt.legend(loc='lower right')
     plt.grid(True, alpha=0.3)
 
     plt.subplot(3, 1, 2)
+    added_dist_label = False
+    for d_time in SCHEDULED_DISTURBANCES.keys():
+        d_time_h = d_time / 3600.0
+        plt.axvspan(d_time_h, d_time_h + 0.5, color='salmon', alpha=0.3, 
+                    label='Disturbance Applied' if not added_dist_label else "")
+        added_dist_label = True
+
     plt.step(t_non_adaptive, binary_non_adaptive, color='red', where='post', alpha=0.8)
     plt.fill_between(t_non_adaptive, 0, binary_non_adaptive, step='post', color='red', alpha=0.3, label=f'Non-Adaptive (Total OFF: {off_hours_non_adaptive:.2f} hrs)')
     plt.axvline(x=12.0, color='gray', linestyle='-', alpha=0.5)
     plt.title(f'Hardware Non-Adaptive Control Signal ({PWM_WINDOW_MINUTES}-min windows)')
     plt.ylabel('State (1=ON, 0=OFF)')
     plt.yticks([0, 1])
-    plt.legend(loc='upper right')
+    plt.legend(loc='lower right')
     plt.grid(True, alpha=0.3)
 
     plt.subplot(3, 1, 3)
-    # ----> SHADE RETUNING REGIONS (Only on the Adaptive Subplot)
+    added_dist_label = False
+    for d_time in SCHEDULED_DISTURBANCES.keys():
+        d_time_h = d_time / 3600.0
+        plt.axvspan(d_time_h, d_time_h + 0.5, color='salmon', alpha=0.3, 
+                    label='Disturbance Applied' if not added_dist_label else "")
+        added_dist_label = True
+
     added_label = False
     for (start_h, end_h) in adaptive_intervals:
         plt.axvspan(start_h, end_h, color='gold', alpha=0.3, 
@@ -506,7 +529,7 @@ if __name__ == "__main__":
     plt.xlabel('Time (Hours)')
     plt.ylabel('State (1=ON, 0=OFF)')
     plt.yticks([0, 1])
-    plt.legend(loc='upper right')
+    plt.legend(loc='lower right')
     plt.grid(True, alpha=0.3)
 
     plt.tight_layout()
