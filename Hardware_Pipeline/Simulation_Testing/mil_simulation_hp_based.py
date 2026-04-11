@@ -176,12 +176,63 @@ def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, target
         def sim_retune_full():
             if controller.retune_thread_active: return
             controller.retune_thread_active = True
-            start_hour = v_clock.get_time() / 3600.0
+            
+            print(f"\n[MIL Sim] 🛑 Adaptive Retune Triggered natively by MAE. Waiting for stability...")
+            
+            # ==================================================
+            # 1. PRE-TEST STABILIZATION PHASE
+            # ==================================================
+            stability_window = int(1800 / dt)  
+            do_buffer = collections.deque(maxlen=stability_window)
+            is_stable = False
+            max_wait_steps = int(3600 / dt)   # Max wait 1 hour
+            
             old_setpoint = controller.setpoint
+            
+            for _ in range(max_wait_steps):
+                v_clock.tick(dt)
+                curr_do = plant.current_do
+                meas_do = curr_do + (random.gauss(0, sensor_noise_std) if add_sensor_noise else 0)
+                if add_process_noise: curr_do += random.gauss(0, process_noise_std)
+                plant.current_do = curr_do
+                
+                # Normal PI control to maintain old setpoint while waiting
+                error = old_setpoint - meas_do
+                tentative_int = controller.integral_sum + (error * dt)
+                pi_out = (controller.kp * error) + (controller.ki * tentative_int)
+                pi_out = max(controller.min_out, min(controller.max_out, pi_out))
+                if controller.min_out < pi_out < controller.max_out:
+                    controller.integral_sum = tentative_int
+                
+                actuator.set_duty_cycle(pi_out)
+                plant.step(actuator.duty_cycle)
+                
+                time_history.append(v_clock.get_time() / 3600.0)
+                do_history.append(plant.current_do)
+                u_history.append(actuator.duty_cycle)
+                
+                do_buffer.append(meas_do)
+                
+                # Check if buffer is full and variance is low enough
+                if len(do_buffer) == stability_window:
+                    if (max(do_buffer) - min(do_buffer)) <= 0.05: # 0.05 mg/L max variance threshold
+                        is_stable = True
+                        break
+                        
+            if not is_stable:
+                print("[MIL Sim] ❌ Retune aborted. System could not stabilize at the setpoint.")
+                controller.retune_thread_active = False
+                return
+                
+            print(f"[MIL Sim] ✅ System stabilized. Executing closed-loop step test...")
+
+            # ==================================================
+            # 2. EXCITATION STEP TEST
+            # ==================================================
+            start_hour = v_clock.get_time() / 3600.0
             step_size = 0.2  
             new_setpoint = old_setpoint + step_size
             
-            print(f"\n[MIL Sim] 🛑 Adaptive Retune Triggered natively by MAE at {start_hour:.2f} hrs!")
             controller.start_retuning_session(controller.target_column)
             controller.setpoint = new_setpoint
             step_start_t = v_clock.get_time()
@@ -250,6 +301,9 @@ def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, target
             
             controller.stop_retuning_session()
             
+            # ==================================================
+            # 3. IDENTIFICATION & OPTIMIZATION
+            # ==================================================
             try:
                 ex_K, ex_tau, ex_delay = fit_closed_loop_fopdt(bump_t, bump_u, bump_y)
                 safe_delay = max(0.05, ex_delay) 

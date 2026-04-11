@@ -182,6 +182,39 @@ class ParameterController(ABC):
         def retune_worker():
             try:
                 old_setpoint = self.setpoint
+                
+                # ==================================================
+                # 1. PRE-TEST STABILIZATION PHASE
+                # ==================================================
+                print(f"[{self.name}] Retune triggered. Waiting for system to stabilize at {old_setpoint}...")
+                stability_window_sec = 300 # 5 minutes of stability required
+                buffer_len = int(max(1, stability_window_sec / self.dt))
+                val_buffer = collections.deque(maxlen=buffer_len)
+                
+                is_stable = False
+                max_wait_time = 3600 # Abort if we can't stabilize in 1 hour
+                wait_start = time.time()
+                
+                while time.time() - wait_start < max_wait_time:
+                    val_buffer.append(self.current_process_value)
+                    
+                    # Check if the buffer is full and variance is extremely low
+                    if len(val_buffer) == buffer_len:
+                        if (max(val_buffer) - min(val_buffer)) <= 0.05: # 0.05 mg/L max variance
+                            is_stable = True
+                            break
+                    time.sleep(self.dt)
+                    
+                if not is_stable:
+                    print(f"[{self.name}] ❌ Retune aborted. System failed to stabilize within {max_wait_time}s.")
+                    self.retune_thread_active = False
+                    return
+                    
+                print(f"[{self.name}] ✅ System stabilized. Executing closed-loop step test...")
+
+                # ==================================================
+                # 2. CLOSED-LOOP EXCITATION TEST
+                # ==================================================
                 step_size = old_setpoint * 0.10 if old_setpoint != 0 else 1.0  
                 new_setpoint = old_setpoint + step_size
 
@@ -195,7 +228,6 @@ class ParameterController(ABC):
 
                 tolerance = abs(step_size) * 0.05
                 rise_time = 0
-                max_wait_time = 3600
 
                 while True:
                     current_error = abs(self.current_process_value - new_setpoint)
@@ -203,7 +235,7 @@ class ParameterController(ABC):
                         rise_time = time.time() - step_start_time
                         break
 
-                    if (time.time() - step_start_time) > max_wait_time:
+                    if (time.time() - step_start_time) > 3600:
                         print(f"[{self.name}] Retune timeout: System never reached the new setpoint.")
                         self.setpoint = old_setpoint
                         self.stop_retuning_session()
@@ -216,6 +248,9 @@ class ParameterController(ABC):
                 end_time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 self.stop_retuning_session()
 
+                # ==================================================
+                # 3. IDENTIFICATION & OPTIMIZATION
+                # ==================================================
                 params = analyze_response(
                     file_paths=[self.retuning_file],
                     start_step=step_time_str,
@@ -233,11 +268,8 @@ class ParameterController(ABC):
                 print(f"[{self.name}] Plant modeled! K: {extracted_gain:.2f}, Tau: {extracted_tau:.2f}, Delay: {extracted_delay:.2f}")
 
                 tf_params = {
-                    'tf_num': [extracted_gain],
-                    'tf_den': [extracted_tau],
-                    'computed_delay': extracted_delay,
-                    'is_reverse_acting': extracted_gain < 0,
-                    'max_kp': 20.0  
+                    'tf_num': [extracted_gain], 'tf_den': [extracted_tau], 'computed_delay': extracted_delay,
+                    'is_reverse_acting': extracted_gain < 0, 'max_kp': 20.0  
                 }
 
                 de_config = {
@@ -247,11 +279,10 @@ class ParameterController(ABC):
                 }
 
                 os.makedirs(de_config['output_folder'], exist_ok=True)
-                print(f"[{self.name}] Running Differential Evolution to optimize PI gains...")
                 optimizer = DEOptimizer(config=de_config, tf_params=tf_params)
                 best_Kp, best_Ki, cost, iterations_run, _ = optimizer.optimize_round(round_num=1)
 
-                print(f"[{self.name}] Optimization finished in {iterations_run} iterations. MAE Cost: {cost:.4f}")
+                print(f"[{self.name}] Optimization finished. MAE Cost: {cost:.4f}")
                 self.update_tuning_parameters(best_Kp, best_Ki, extracted_gain, extracted_tau, extracted_delay)
 
             except Exception as e:
