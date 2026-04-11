@@ -23,12 +23,10 @@ ALGO_MAP = {'DE': DEOptimizer, 'GA': GAOptimizer, 'PSO': PSOOptimizer}
 # --- 1. WORKER FUNCTION ---
 def worker(task):
     worker_start_time = time.time()
-    algo_name, pop_size, base_config, tf_params, base_output_folder, algo_specific_config = task
-    output_folder = os.path.join(base_output_folder, algo_name, f"pop_{pop_size}")
+    algo_name, multiplier, fixed_pop_size, base_config, tf_params, base_output_folder, algo_specific_config = task
+    output_folder = os.path.join(base_output_folder, algo_name, f"mult_{multiplier}")
 
     # --- MICRO-LEVEL RESUME CHECK ---
-    # If the CSV already exists, skip computation and just read the data
-    # Updated to ONLY look for the main detailed log, ignoring raw history CSVs
     search_pattern = os.path.join(output_folder, "*_detailed_log.csv")
     found_files = glob.glob(search_pattern)
 
@@ -41,44 +39,49 @@ def worker(task):
             kp_results = df_log.iloc[:, 3].tolist()
             ki_results = df_log.iloc[:, 4].tolist()
         except Exception as e:
-            print(f"Error reading existing CSV for {algo_name} Pop {pop_size}: {e}")
+            print(f"Error reading existing CSV for {algo_name} Mult {multiplier}: {e}")
             cost_results, kp_results, ki_results, iter_results = [], [], [], []
             
         return {
             "algo": algo_name,
-            "pop_size": pop_size,
+            "multiplier": multiplier,
             "cost": cost_results,
             "kp": kp_results,
             "ki": ki_results,
             "iters": iter_results,
-            "elapsed_time": 0.0  # 0 seconds spent computing this run
+            "elapsed_time": 0.0
         }
     # --------------------------------
+
+    # --- APPLY MULTIPLIER TO TRANSFER FUNCTION ---
+    mod_tf_params = tf_params.copy()
+    # Multiply each element in the numerator array by the multiplier
+    mod_tf_params['tf_num'] = [val * multiplier for val in tf_params['tf_num']]
 
     # --- RUN OPTIMIZER IF NO DATA EXISTS ---
     run_config = base_config.copy()
     run_config.update(algo_specific_config)
-    run_config['pop_size'] = pop_size
-    run_config['population_size'] = pop_size
+    run_config['pop_size'] = fixed_pop_size
+    run_config['population_size'] = fixed_pop_size
     run_config['output_folder'] = output_folder
 
     # Dynamic scaling for GA parameters
     if algo_name == "GA":
         if "mating_ratio" in run_config:
-            run_config["num_parents_mating"] = max(2, int(pop_size * run_config.pop("mating_ratio")))
+            run_config["num_parents_mating"] = max(2, int(fixed_pop_size * run_config.pop("mating_ratio")))
         if "elitism_ratio" in run_config:
-            run_config["keep_elitism"] = max(1, int(pop_size * run_config.pop("elitism_ratio")))
+            run_config["keep_elitism"] = max(1, int(fixed_pop_size * run_config.pop("elitism_ratio")))
 
     try:
         optimizer_class = ALGO_MAP[algo_name]
-        optimizer = optimizer_class(run_config, tf_params)
+        optimizer = optimizer_class(run_config, mod_tf_params)
         optimizer.run_experiment()
     except Exception as e:
-        print(f"\n[CRASH] {algo_name} Pop {pop_size}: {e}")
+        print(f"\n[CRASH] {algo_name} Mult {multiplier}: {e}")
         worker_end_time = time.time()
         return {
             "algo": algo_name,
-            "pop_size": pop_size,
+            "multiplier": multiplier,
             "cost": [],
             "kp": [],
             "ki": [],
@@ -102,12 +105,12 @@ def worker(task):
             kp_results = df_log.iloc[:, 3].tolist()
             ki_results = df_log.iloc[:, 4].tolist()
         except Exception as e:
-            print(f"Error reading CSV for {algo_name} Pop {pop_size}: {e}")
+            print(f"Error reading CSV for {algo_name} Mult {multiplier}: {e}")
 
     worker_end_time = time.time()
     return {
         "algo": algo_name,
-        "pop_size": pop_size,
+        "multiplier": multiplier,
         "cost": cost_results,
         "kp": kp_results,
         "ki": ki_results,
@@ -124,7 +127,7 @@ def save_checkpoint(all_data, base_output_dir):
             for i in range(len(entry['cost'])):
                 rows.append({
                     "Algorithm": entry['algo'],
-                    "Population Size": entry['pop_size'],
+                    "TF_Num_Multiplier": entry['multiplier'],
                     "Trial_Number": i,
                     "Final_Cost": entry['cost'][i],
                     "Kp": entry['kp'][i],
@@ -135,7 +138,7 @@ def save_checkpoint(all_data, base_output_dir):
     if not rows: return pd.DataFrame()
     df = pd.DataFrame(rows)
     # Save checkpoint into the base output directory
-    filename = os.path.join(base_output_dir, f"checkpoint_sweep_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
+    filename = os.path.join(base_output_dir, f"checkpoint_mult_sweep_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
     df.to_csv(filename, index=False)
     print(f"Checkpoint saved to: {filename}")
     return df
@@ -146,13 +149,11 @@ if __name__ == "__main__":
     multiprocessing.set_start_method('spawn', force=True)
 
     total_cores = multiprocessing.cpu_count()
-
-    # Calculate 75% and ensure it's at least 1 core
     num_cores = max(1, math.floor(total_cores * 0.75))
 
-    START_POP = 50
-    END_POP = 50
-    STEP_SIZE = 0
+    # --- SWEEP PARAMETERS ---
+    MULTIPLIERS = [i for i in range(2, 21, 2)]
+    FIXED_POP_SIZE = 50  # Keep population constant across all runs
 
     shared_config = {
         "patience_limit": 25,
@@ -183,11 +184,8 @@ if __name__ == "__main__":
         }
     }
 
-    pop_sizes = list(range(START_POP, END_POP + 1, STEP_SIZE))
-    if pop_sizes[-1] != END_POP: pop_sizes.append(END_POP)
-
-    batch_dir = "BATCH_OPENLOOP"
-    sweep_type = "population_sweep"
+    batch_dir = "BATCH_OPENLOOP_GAIN_SWEEP"
+    sweep_type = "gain_multiplier_sweep"
 
     transfer_functions = {
         f"{sweep_type}_do_feb5_daytime": {
@@ -251,7 +249,7 @@ if __name__ == "__main__":
             os.makedirs(BASE_OUTPUT_DIR, exist_ok=True)
 
             # --- MACRO-LEVEL RESUME CHECK ---
-            existing_checkpoints = glob.glob(os.path.join(BASE_OUTPUT_DIR, "checkpoint_sweep_*.csv"))
+            existing_checkpoints = glob.glob(os.path.join(BASE_OUTPUT_DIR, "checkpoint_mult_sweep_*.csv"))
             if existing_checkpoints:
                 print(f"[RESUME] Skipping TF {idx + 1} ({base_dir}): Master checkpoint already exists.")
                 continue
@@ -263,9 +261,9 @@ if __name__ == "__main__":
             print(f"--- SWEEP STARTED: {start_datetime.strftime('%Y-%m-%d %H:%M:%S')} ---")
             print(f"Running on {num_cores} cores to prevent Memory Overflows...")
 
-            tasks = [(algo, size, shared_config, tf_params, BASE_OUTPUT_DIR, algo_specific_configs.get(algo, {}))
+            tasks = [(algo, mult, FIXED_POP_SIZE, shared_config, tf_params, BASE_OUTPUT_DIR, algo_specific_configs.get(algo, {}))
                      for algo in ALGO_MAP.keys()
-                     for size in pop_sizes]
+                     for mult in MULTIPLIERS]
 
             raw_results = list(tqdm(pool.imap(worker, tasks), total=len(tasks)))
 
@@ -274,10 +272,10 @@ if __name__ == "__main__":
             if df_results.empty:
                 print("No data collected for this transfer function.")
 
-            print("\nGenerating combined cost history graphs for each population size...")
+            print("\nGenerating combined cost history graphs for each multiplier...")
             target_round = shared_config['n_rounds']  # Usually 50
 
-            for pop_size in pop_sizes:
+            for mult in MULTIPLIERS:
                 plt.figure(figsize=(10, 6))
                 lines_plotted = 0
 
@@ -290,7 +288,7 @@ if __name__ == "__main__":
 
                 for algo in ALGO_MAP.keys():
                     # Construct path to the saved raw history
-                    algo_dir = BASE_OUTPUT_DIR / algo / f"pop_{pop_size}"
+                    algo_dir = BASE_OUTPUT_DIR / algo / f"mult_{mult}"
                     history_file = algo_dir / f"raw_cost_history_round_{target_round:03d}.csv"
 
                     if history_file.exists():
@@ -301,7 +299,7 @@ if __name__ == "__main__":
                             if current_max > max_iter_found:
                                 max_iter_found = current_max
                         except Exception as e:
-                            print(f"Failed to load {algo} pop {pop_size}: {e}")
+                            print(f"Failed to load {algo} mult {mult}: {e}")
 
                 # Set the target max iteration to at least 50 (or higher if an algo ran longer)
                 target_max_iter = max(50, int(max_iter_found))
@@ -328,9 +326,9 @@ if __name__ == "__main__":
                     lines_plotted += 1
 
                 if lines_plotted > 0:
-                    plt.title(f'Algorithm Comparison: Cost Convergence - Pop {pop_size} (Round {target_round})',
+                    plt.title(f'Algorithm Comparison: Cost Convergence - Gain x{mult} (Round {target_round})',
                               fontsize=14, fontweight='bold')
-                    plt.ylabel('Cost', fontsize=12) # Removed log10 from label unless you are strictly plotting log values
+                    plt.ylabel('Cost', fontsize=12) 
                     plt.xlabel('Iteration', fontsize=12)
                     
                     # Force the x-axis to be consistent across all graphs
@@ -339,7 +337,7 @@ if __name__ == "__main__":
                     plt.grid(True, which='both', linestyle=':', linewidth=0.7)
                     plt.legend(loc='upper right', fontsize=11)
 
-                    plot_path = BASE_OUTPUT_DIR / f'combined_cost_history_pop_{pop_size:03d}.png'
+                    plot_path = BASE_OUTPUT_DIR / f'combined_cost_history_mult_{mult:03d}.png'
                     plt.tight_layout()
                     plt.savefig(plot_path, dpi=300)
 
@@ -372,15 +370,15 @@ if __name__ == "__main__":
             worker_timing_filename = os.path.join(BASE_OUTPUT_DIR, f"execution_timing_workers_{timestamp_str}.csv")
             with open(worker_timing_filename, mode='w', newline='') as file:
                 writer = csv.writer(file)
-                writer.writerow(["Algorithm", "Population Size", "Elapsed Time (HH:MM:SS)", "Elapsed Time (Seconds)"])
+                writer.writerow(["Algorithm", "TF_Num_Multiplier", "Elapsed Time (HH:MM:SS)", "Elapsed Time (Seconds)"])
 
-                sorted_results = sorted(raw_results, key=lambda x: (x['algo'], x['pop_size']))
+                sorted_results = sorted(raw_results, key=lambda x: (x['algo'], x['multiplier']))
                 for res in sorted_results:
                     w_sec = res['elapsed_time']
                     wm, ws = divmod(w_sec, 60)
                     wh, wm = divmod(wm, 60)
                     w_formatted = f"{int(wh):02d}:{int(wm):02d}:{ws:05.2f}"
-                    writer.writerow([res['algo'], res['pop_size'], w_formatted, round(w_sec, 2)])
+                    writer.writerow([res['algo'], res['multiplier'], w_formatted, round(w_sec, 2)])
 
     # Final overall execution log
     global_elapsed = time.time() - total_global_start_time

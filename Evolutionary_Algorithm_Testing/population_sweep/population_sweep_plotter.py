@@ -115,7 +115,7 @@ def generate_broken_axis_replots():
                 for algo, df_hist in loaded_data.items():
                     last_cost = df_hist['Cost'].iloc[-1]
                     color = color_map.get(algo, 'black')
-                    lbl = f"{algo} (Final Cost: {last_cost:.4f})"
+                    lbl = f"{algo} (Final Cost: {last_cost:.2f})"
                     
                     # Plot on both axes
                     ax1.plot(df_hist['Iteration'], df_hist['Cost'], linewidth=2.5, color=color, label=lbl)
@@ -142,12 +142,12 @@ def generate_broken_axis_replots():
                 ax2.axhline(y=y_bottom_zoom[1], color='red', linestyle='--', linewidth=2.0, zorder=10)
 
                 # Labels
-                ax2.set_xlabel("Iteration", fontsize=12)
-                fig.supylabel("Cost", fontsize=12)
+                ax2.set_xlabel("Iteration", fontsize=16)
+                fig.supylabel("Cost", fontsize=16)
 
                 title_str = f'Algorithm Comparison: Cost Convergence - Pop {pop_size}\n(Round {TARGET_ROUND} | {tf_name})'
-                ax1.set_title(title_str, fontsize=14, fontweight='bold', pad=15)
-                ax1.legend(loc='upper right', fontsize=11)
+                ax1.set_title(title_str, fontsize=16, fontweight='bold', pad=15)
+                ax1.legend(loc='upper right', fontsize=14)
                 
                 ax1.grid(True, linestyle=':', alpha=0.6)
                 ax2.grid(True, linestyle=':', alpha=0.6)
@@ -163,16 +163,16 @@ def generate_broken_axis_replots():
                 for algo, df_hist in loaded_data.items():
                     last_cost = df_hist['Cost'].iloc[-1]
                     color = color_map.get(algo, 'black')
-                    lbl = f"{algo} (Final Cost: {last_cost:.4f})"
+                    lbl = f"{algo} (Final Cost: {last_cost:.2f})"
                     plt.plot(df_hist['Iteration'], df_hist['Cost'], linewidth=2.5, color=color, label=lbl)
 
                 plt.title(f'Algorithm Comparison: Cost Convergence - Pop {pop_size}\n(Round {TARGET_ROUND} | {tf_name})',
-                          fontsize=14, fontweight='bold')
-                plt.ylabel('Cost', fontsize=12)
-                plt.xlabel('Iteration', fontsize=12)
+                          fontsize=16, fontweight='bold')
+                plt.ylabel('Cost', fontsize=16)
+                plt.xlabel('Iteration', fontsize=16)
                 plt.xlim(0, target_max_iter) 
                 plt.grid(True, which='both', linestyle=':', linewidth=0.7)
-                plt.legend(loc='upper right', fontsize=11)
+                plt.legend(loc='upper right', fontsize=14)
 
                 plt.tight_layout()
                 plt.savefig(plot_path, dpi=300)
