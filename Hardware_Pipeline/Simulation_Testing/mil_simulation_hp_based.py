@@ -93,25 +93,41 @@ def fit_closed_loop_fopdt(t_arr, u_arr, y_arr):
     du = u_arr - u0
     dy = y_arr - y0
     
-    def simulate_fopdt(params):
-        K, tau, delay = params
+    def simulate_fopdt(K, tau, delay):
         y_sim = np.zeros_like(t_arr)
         delay_steps = int(max(0.0, delay) / dt)
         du_delayed = np.zeros_like(du)
-        if delay_steps < len(du): du_delayed[delay_steps:] = du[:-delay_steps]
+        if delay_steps < len(du): 
+            du_delayed[delay_steps:] = du[:-delay_steps]
+            
         for i in range(1, len(t_arr)):
             derivative = (dt / max(1.0, tau)) * (K * du_delayed[i-1] - y_sim[i-1])
             y_sim[i] = y_sim[i-1] + derivative
         return y_sim
         
-    def objective_function(params):
-        y_sim = simulate_fopdt(params)
-        return np.mean(np.abs(dy - y_sim))
+    def objective_function(scaled_params):
+        # 1. UN-SCALE PARAMETERS for the simulation
+        # The optimizer handles values between 0.1 and 10, but the plant gets the true values
+        K = scaled_params[0]
+        tau = scaled_params[1] * 1000.0   # Scale tau back up
+        delay = scaled_params[2] * 10.0   # Scale delay back up
         
-    bnds = ((0.1, 10.0), (10.0, 10000.0), (0.0, 500.0))
-    initial_guess = [1.5, 1500.0, 10.0]
-    res = minimize(objective_function, initial_guess, bounds=bnds, method='L-BFGS-B')
-    return res.x[0], res.x[1], res.x[2]
+        y_sim = simulate_fopdt(K, tau, delay)
+        
+        # 2. USE MSE INSTEAD OF MAE
+        # This provides a smooth parabola for the optimizer to roll down
+        return np.mean((dy - y_sim)**2)
+        
+    # Scaled bounds and initial guess
+    bnds = ((0.1, 10.0), (0.01, 10.0), (0.0, 50.0)) 
+    initial_guess = [1.5, 1.5, 1.0] # Translates to K=1.5, tau=1500, delay=10
+    
+    # Nelder-Mead is vastly superior for this specific type of dynamic time-series fitting
+    res = minimize(objective_function, initial_guess, bounds=bnds, method='Nelder-Mead')
+    
+    # Return the un-scaled, true optimal values to your hardware pipeline
+    return res.x[0], res.x[1] * 1000.0, res.x[2] * 10.0
+
 
 # ==========================================
 # 3. PURE MATLAB BASELINE SIMULATION
@@ -185,7 +201,7 @@ def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, target
             stability_window = int(1800 / dt)  
             do_buffer = collections.deque(maxlen=stability_window)
             is_stable = False
-            max_wait_steps = int(3600 / dt)   # Max wait 1 hour
+            max_wait_steps = int(7200 / dt)   # Max wait 1 hour
             
             old_setpoint = controller.setpoint
             

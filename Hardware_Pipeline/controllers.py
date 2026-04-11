@@ -187,7 +187,7 @@ class ParameterController(ABC):
                 # 1. PRE-TEST STABILIZATION PHASE
                 # ==================================================
                 print(f"[{self.name}] Retune triggered. Waiting for system to stabilize at {old_setpoint}...")
-                stability_window_sec = 300 # 5 minutes of stability required
+                stability_window_sec = 300 
                 buffer_len = int(max(1, stability_window_sec / self.dt))
                 val_buffer = collections.deque(maxlen=buffer_len)
                 
@@ -235,7 +235,7 @@ class ParameterController(ABC):
                         rise_time = time.time() - step_start_time
                         break
 
-                    if (time.time() - step_start_time) > 3600:
+                    if (time.time() - step_start_time) > 10800:
                         print(f"[{self.name}] Retune timeout: System never reached the new setpoint.")
                         self.setpoint = old_setpoint
                         self.stop_retuning_session()
@@ -243,7 +243,7 @@ class ParameterController(ABC):
                     time.sleep(self.dt)
 
                 print(f"[{self.name}] Rise time: {rise_time:.2f}s. Recording for additional {rise_time * 3:.2f}s.")
-                time.sleep(rise_time * 3)
+                time.sleep(rise_time * 5, 7200)
 
                 end_time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 self.stop_retuning_session()
