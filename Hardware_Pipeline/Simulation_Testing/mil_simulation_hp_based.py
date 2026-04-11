@@ -244,7 +244,7 @@ def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, target
             # 2. EXCITATION STEP TEST (FIXED DURATION)
             # ==================================================
             start_hour = v_clock.get_time() / 3600.0
-            new_setpoint = old_setpoint * 1.5
+            new_setpoint = old_setpoint * 1.2
             
             controller.start_retuning_session(controller.target_column)
             controller.setpoint = new_setpoint
