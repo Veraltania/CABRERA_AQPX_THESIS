@@ -1,0 +1,10 @@
+> git push origin main:main
+fatal: failed to store: -25308
+remote: warning: File sim-do_state.csv is 66.90 MB; this is larger than GitHub's recommended maximum file size of 50.00 MB        
+remote: error: Trace: c724f44463473fd4d4ee1d04ad8f80b965c2b035f70e9430eecbe3b32054afc5        
+remote: error: See https://gh.io/lfs for more information.        
+remote: error: File sim-do_state.csv is 281.31 MB; this exceeds GitHub's file size limit of 100.00 MB        
+remote: error: GH001: Large files detected. You may want to try Git Large File Storage - https://git-lfs.github.com.        
+To https://github.com/Veralta5630/Cabrera_AQPX_Thesis.git
+ ! [remote rejected]   main -> main (pre-receive hook declined)
+error: failed to push some refs to 'https://github.com/Veralta5630/Cabrera_AQPX_Thesis.git'
