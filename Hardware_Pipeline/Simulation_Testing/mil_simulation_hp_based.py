@@ -216,8 +216,10 @@ def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, target
     print(f"\n--- Starting Hardware Pipeline {'ADAPTIVE' if is_adaptive else 'NON-ADAPTIVE'} Simulation ---")
 
     with patch('Hardware_Pipeline.controllers.time.time', side_effect=v_clock.get_time), \
-         patch('Hardware_Pipeline.tuning_strategies.time.time', side_effect=v_clock.get_time), \
          patch('Hardware_Pipeline.controllers.datetime') as mock_dt:
+        
+        mock_dt.now.side_effect = lambda: datetime(2025, 1, 1) + timedelta(seconds=v_clock.get_time())
+        mock_dt.side_effect = lambda *args, **kw: datetime(*args, **kw)
         
         mock_dt.now.side_effect = lambda: datetime(2025, 1, 1) + timedelta(seconds=v_clock.get_time())
         mock_dt.side_effect = lambda *args, **kw: datetime(*args, **kw)
@@ -380,8 +382,8 @@ if __name__ == "__main__":
     PWM_WINDOW_MINUTES = 60 
 
     ADD_SENSOR_NOISE = True
-    SENSOR_NOISE_STD = 0.05 
-    ADD_PROCESS_NOISE = False
+    SENSOR_NOISE_STD = 0.05
+    ADD_PROCESS_NOISE = True
     PROCESS_NOISE_STD = 0.005 
     SEED_VALUE = 42
 
