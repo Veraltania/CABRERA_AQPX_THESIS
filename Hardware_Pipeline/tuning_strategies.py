@@ -21,7 +21,7 @@ import os
 import csv
 
 class AdaptiveTuningStrategy: # Inherits from TuningStrategy
-    def __init__(self, window_duration=1800):  # monitor for 30 minutes / 1800 seconds
+    def __init__(self, window_duration=3600):  
         self.window_duration = window_duration
         self.window_timer = 0.0
         
