@@ -187,7 +187,7 @@ def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, target
             # --- CUSTOM STEP LOGIC ---
             old_setpoint = controller.setpoint
             step_size = 0.2  
-            new_setpoint = old_setpoint + step_size
+            new_setpoint = old_setpoint - step_size
             
             print(f"\n[MIL Sim] 🛑 Adaptive Retune Triggered at Virtual Time {v_clock.get_time()/3600.0:.2f} hrs!")
             print(f"[MIL Sim] Running synchronous closed-loop step test to {new_setpoint:.2f} mg/L...")
@@ -344,12 +344,12 @@ if __name__ == "__main__":
     PROCESS_NOISE_STD = 0.005 
     SEED_VALUE = 42
 
-    day_tf = {'K': 1.346, 'tau': 1551.955, 'delay': 104.469}
-    night_tf = {'K': 2.355, 'tau': 3083.590, 'delay': 0.05}
+    day_tf = {'K': 1.133, 'tau': 2833.82, 'delay': 0.05}
+    night_tf = {'K': 2.049, 'tau': 4499.996, 'delay': 0.05}
 
-    MATLAB_PLANT = {'K': 86.7056, 'tau': 3287.0801, 'delay': 0.05}  
-    MATLAB_KP = 9.48910
-    MATLAB_KI = 0.00592
+    MATLAB_PLANT = day_tf
+    MATLAB_KP = 0.92
+    MATLAB_KI = 0.000974
 
     random.seed(SEED_VALUE)
     np.random.seed(SEED_VALUE)
