@@ -381,7 +381,7 @@ if __name__ == "__main__":
 
     ADD_SENSOR_NOISE = True
     SENSOR_NOISE_STD = 0.05 
-    ADD_PROCESS_NOISE = False
+    ADD_PROCESS_NOISE = True
     PROCESS_NOISE_STD = 0.005 
     SEED_VALUE = 42
 
