@@ -106,28 +106,26 @@ def fit_closed_loop_fopdt(t_arr, u_arr, y_arr):
         return y_sim
         
     def objective_function(scaled_params):
-        # 1. UN-SCALE PARAMETERS for the simulation
-        # The optimizer handles values between 0.1 and 10, but the plant gets the true values
+        # Un-scale the parameters so the simulation gets the real, massive values
         K = scaled_params[0]
-        tau = scaled_params[1] * 1000.0   # Scale tau back up
-        delay = scaled_params[2] * 10.0   # Scale delay back up
+        tau = scaled_params[1] * 1000.0   
+        delay = scaled_params[2] * 10.0   
         
         y_sim = simulate_fopdt(K, tau, delay)
         
-        # 2. USE MSE INSTEAD OF MAE
-        # This provides a smooth parabola for the optimizer to roll down
-        return np.mean((dy - y_sim)**2)
+        # Use ISE (Integral Square Error) to provide smooth gradients
+        ise = np.sum((dy - y_sim)**2) * dt
+        return ise
         
-    # Scaled bounds and initial guess
+    # Bounds are scaled down so the optimizer operates on O(1) numbers
     bnds = ((0.1, 10.0), (0.01, 10.0), (0.0, 50.0)) 
-    initial_guess = [1.5, 1.5, 1.0] # Translates to K=1.5, tau=1500, delay=10
+    # Guess translates to K=1.5, tau=1500.0, delay=10.0
+    initial_guess = [1.5, 1.5, 1.0] 
     
-    # Nelder-Mead is vastly superior for this specific type of dynamic time-series fitting
-    res = minimize(objective_function, initial_guess, bounds=bnds, method='Nelder-Mead')
+    res = minimize(objective_function, initial_guess, bounds=bnds, method='L-BFGS-B')
     
-    # Return the un-scaled, true optimal values to your hardware pipeline
+    # Scale the results BACK UP before returning them to the rest of your script
     return res.x[0], res.x[1] * 1000.0, res.x[2] * 10.0
-
 
 # ==========================================
 # 3. PURE MATLAB BASELINE SIMULATION
@@ -243,23 +241,22 @@ def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, target
             print(f"[MIL Sim] ✅ System stabilized. Executing closed-loop step test...")
 
             # ==================================================
-            # 2. EXCITATION STEP TEST
+            # 2. EXCITATION STEP TEST (FIXED DURATION)
             # ==================================================
             start_hour = v_clock.get_time() / 3600.0
-            step_size = 0.2  
-            new_setpoint = old_setpoint + step_size
+            new_setpoint = old_setpoint * 1.5
             
             controller.start_retuning_session(controller.target_column)
             controller.setpoint = new_setpoint
-            step_start_t = v_clock.get_time()
             
             bump_t, bump_u, bump_y = [], [], []
-            tolerance = abs(step_size) * 0.05
-            rise_time = 0
-            max_steps = int(3600 / dt) 
-            reached = False
             
-            for _ in range(max_steps):
+            # Force a massive 7-hour step test to guarantee steady-state K observation
+            test_duration_seconds = 7200 
+            total_steps = int(test_duration_seconds / dt)
+            print(f"[MIL Sim] Running fixed-duration closed-loop step test for {test_duration_seconds / 3600:.2f} hours...")
+            
+            for _ in range(total_steps):
                 v_clock.tick(dt)
                 curr_do = plant.current_do
                 meas_do = curr_do + (random.gauss(0, sensor_noise_std) if add_sensor_noise else 0)
@@ -283,37 +280,6 @@ def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, target
                 bump_t.append(v_clock.get_time())
                 bump_u.append(actuator.duty_cycle)
                 bump_y.append(plant.current_do)
-                
-                if not reached and abs(plant.current_do - new_setpoint) <= tolerance:
-                    rise_time = v_clock.get_time() - step_start_t
-                    reached = True
-                    break
-                    
-            if reached:
-                print(f"[MIL Sim] Rise time achieved: {rise_time:.1f}s. Logging 3x tail to stabilize...")
-                for _ in range(int((rise_time * 3) / dt)):
-                    v_clock.tick(dt)
-                    curr_do = plant.current_do
-                    meas_do = curr_do + (random.gauss(0, sensor_noise_std) if add_sensor_noise else 0)
-                    if add_process_noise: curr_do += random.gauss(0, process_noise_std)
-                    plant.current_do = curr_do
-                    
-                    error = new_setpoint - meas_do
-                    tentative_int = controller.integral_sum + (error * dt)
-                    pi_out = (controller.kp * error) + (controller.ki * tentative_int)
-                    pi_out = max(controller.min_out, min(controller.max_out, pi_out))
-                    if controller.min_out < pi_out < controller.max_out: controller.integral_sum = tentative_int
-                    
-                    controller._record_retuning_data(meas_do)
-                    actuator.set_duty_cycle(pi_out)
-                    plant.step(actuator.duty_cycle)
-                    
-                    time_history.append(v_clock.get_time() / 3600.0)
-                    do_history.append(plant.current_do)
-                    u_history.append(actuator.duty_cycle)
-                    bump_t.append(v_clock.get_time())
-                    bump_u.append(actuator.duty_cycle)
-                    bump_y.append(plant.current_do)
             
             controller.stop_retuning_session()
             

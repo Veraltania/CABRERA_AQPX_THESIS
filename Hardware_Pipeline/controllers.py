@@ -226,24 +226,13 @@ class ParameterController(ABC):
                 step_time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 print(f"[{self.name}] Closed-loop setpoint test started. Setpoint: {old_setpoint} -> {new_setpoint:.2f}")
 
-                tolerance = abs(step_size) * 0.05
-                rise_time = 0
-
-                while True:
-                    current_error = abs(self.current_process_value - new_setpoint)
-                    if current_error <= tolerance:
-                        rise_time = time.time() - step_start_time
-                        break
-
-                    if (time.time() - step_start_time) > 10800:
-                        print(f"[{self.name}] Retune timeout: System never reached the new setpoint.")
-                        self.setpoint = old_setpoint
-                        self.stop_retuning_session()
-                        return
-                    time.sleep(self.dt)
-
-                print(f"[{self.name}] Rise time: {rise_time:.2f}s. Recording for additional {rise_time * 3:.2f}s.")
-                time.sleep(rise_time * 5, 7200)
+                # Force a massive, fixed-duration test 
+                test_duration_seconds = 7200
+                print(f"[{self.name}] Recording step response for a fixed {test_duration_seconds / 3600:.2f} hours...")
+                
+                # Because calculate_pi is handled by external data payloads in the main thread, 
+                # this worker thread just needs to sleep and let the main thread log the data.
+                time.sleep(test_duration_seconds)
 
                 end_time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 self.stop_retuning_session()
@@ -268,7 +257,7 @@ class ParameterController(ABC):
                 print(f"[{self.name}] Plant modeled! K: {extracted_gain:.2f}, Tau: {extracted_tau:.2f}, Delay: {extracted_delay:.2f}")
 
                 tf_params = {
-                    'tf_num': [extracted_gain], 'tf_den': [extracted_tau], 'computed_delay': extracted_delay,
+                    'tf_num': [extracted_gain], 'tf_den': [extracted_tau, 1], 'computed_delay': extracted_delay,
                     'is_reverse_acting': extracted_gain < 0, 'max_kp': 20.0  
                 }
 
