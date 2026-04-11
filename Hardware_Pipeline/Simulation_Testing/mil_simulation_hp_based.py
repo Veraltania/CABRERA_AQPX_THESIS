@@ -7,14 +7,13 @@ from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
 from unittest.mock import patch
 import numpy as np
-from scipy.optimize import minimize
 
 # ==========================================
 # HARDWARE PIPELINE IMPORTS
 # ==========================================
 # (Adjust paths if your directory structure differs)
 from Evolutionary_Algorithm_Testing.de.de_optimizer import DEOptimizer
-# We are replacing analyze_response with our custom closed-loop fitter
+from Transfer_Function_Modeling.closed_loop_fitter import fit_closed_loop_fopdt
 from Hardware_Pipeline.controllers import DOController
 from Hardware_Pipeline.tuning_strategies import AdaptiveTuningStrategy, StaticTuningStrategy
 
@@ -86,7 +85,7 @@ class VirtualClock:
 
 
 # ==========================================
-# 2. AUTO-TUNING & CUSTOM FITTER
+# 2. AUTO-TUNING
 # ==========================================
 def auto_tune_gains(tf_name, tf_config):
     print(f"\n[Auto-Tuner] Running DE Optimization for {tf_name} Phase...")
@@ -111,48 +110,6 @@ def auto_tune_gains(tf_name, tf_config):
     
     print(f"[Auto-Tuner] {tf_name} Optimal Gains Found -> Kp: {best_kp:.4f}, Ki: {best_ki:.4f} (Cost: {best_cost:.4f})")
     return best_kp, best_ki
-
-def fit_closed_loop_fopdt(t_arr, u_arr, y_arr):
-    """
-    Custom Curve-Fitter for Closed-Loop data.
-    Minimizes the MSE between the physical step data and an idealized FOPDT simulation.
-    """
-    t_arr, u_arr, y_arr = np.array(t_arr), np.array(u_arr), np.array(y_arr)
-    dt = t_arr[1] - t_arr[0]
-    
-    # Isolate the delta (bump) from the steady-state baseline
-    u0, y0 = u_arr[0], y_arr[0]
-    du = u_arr - u0
-    dy = y_arr - y0
-    
-    def simulate_fopdt(params):
-        K, tau, delay = params
-        y_sim = np.zeros_like(t_arr)
-        delay_steps = int(max(0.0, delay) / dt)
-        
-        # Apply dead-time shift to the control signal
-        du_delayed = np.zeros_like(du)
-        if delay_steps < len(du):
-            du_delayed[delay_steps:] = du[:-delay_steps]
-            
-        # Standard numerical integration of a First-Order Process
-        for i in range(1, len(t_arr)):
-            derivative = (dt / max(1.0, tau)) * (K * du_delayed[i-1] - y_sim[i-1])
-            y_sim[i] = y_sim[i-1] + derivative
-        return y_sim
-        
-    def objective_function(params):
-        y_sim = simulate_fopdt(params)
-        return np.mean((dy - y_sim)**2) # Mean Squared Error
-        
-    # Bounds for the optimizer to prevent physically impossible plants
-    # K: (0.1 to 10), Tau: (10s to 10,000s), Delay: (0s to 500s)
-    bnds = ((0.1, 10.0), (10.0, 10000.0), (0.0, 500.0))
-    # Initial Guess: K=1.5, Tau=1500s, Delay=10s
-    initial_guess = [1.5, 1500.0, 10.0]
-    
-    res = minimize(objective_function, initial_guess, bounds=bnds, method='L-BFGS-B')
-    return res.x[0], res.x[1], res.x[2] # K, Tau, Delay
 
 
 # ==========================================
@@ -215,11 +172,10 @@ def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, target
     
     print(f"\n--- Starting Hardware Pipeline {'ADAPTIVE' if is_adaptive else 'NON-ADAPTIVE'} Simulation ---")
 
+    # Only patch controllers.time and datetime.
+    # The tuning_strategies patch was correctly removed here to prevent AttributeError.
     with patch('Hardware_Pipeline.controllers.time.time', side_effect=v_clock.get_time), \
          patch('Hardware_Pipeline.controllers.datetime') as mock_dt:
-        
-        mock_dt.now.side_effect = lambda: datetime(2025, 1, 1) + timedelta(seconds=v_clock.get_time())
-        mock_dt.side_effect = lambda *args, **kw: datetime(*args, **kw)
         
         mock_dt.now.side_effect = lambda: datetime(2025, 1, 1) + timedelta(seconds=v_clock.get_time())
         mock_dt.side_effect = lambda *args, **kw: datetime(*args, **kw)
@@ -230,7 +186,7 @@ def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, target
             
             # --- CUSTOM STEP LOGIC ---
             old_setpoint = controller.setpoint
-            step_size = 0.2  # Hardcoded +0.2 step size as requested
+            step_size = 0.2  
             new_setpoint = old_setpoint + step_size
             
             print(f"\n[MIL Sim] 🛑 Adaptive Retune Triggered at Virtual Time {v_clock.get_time()/3600.0:.2f} hrs!")
@@ -284,8 +240,9 @@ def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, target
                     break
                     
             if reached:
-                print(f"[MIL Sim] Rise time achieved: {rise_time:.1f}s. Logging 3x tail to stabilize...")
-                for _ in range(int((rise_time * 3) / dt)):
+                tail_time_secs = 7200 # Enforce 2-hour tail to let integral term settle Actuator output
+                print(f"[MIL Sim] Rise time achieved: {rise_time:.1f}s. Logging {tail_time_secs}s tail to stabilize K...")
+                for _ in range(int(tail_time_secs / dt)):
                     v_clock.tick(dt)
                     curr_do = plant.current_do
                     meas_do = curr_do + (random.gauss(0, sensor_noise_std) if add_sensor_noise else 0)
@@ -312,9 +269,9 @@ def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, target
             
             controller.stop_retuning_session()
             
-            print("[MIL Sim] Executing Custom Closed-Loop FOPDT Curve-Fitter & DE Optimizer...")
+            print("[MIL Sim] Executing Imported Custom Closed-Loop FOPDT Curve-Fitter & DE Optimizer...")
             try:
-                # Use our robust, custom mathematical curve fitter instead of standard open-loop extraction
+                # Use our newly imported module!
                 ex_K, ex_tau, ex_delay = fit_closed_loop_fopdt(bump_t, bump_u, bump_y)
                 print(f"[MIL Sim] Custom Fitter Modeled Plant -> K={ex_K:.4f}, Tau={ex_tau:.2f}, Delay={ex_delay:.2f}")
 
@@ -379,20 +336,20 @@ if __name__ == "__main__":
     TARGET_DO_SETPOINT = 2.0  
     SIM_DURATION = 86400 
     DT_STEP = 5.0
-    PWM_WINDOW_MINUTES = 60 
+    PWM_WINDOW_MINUTES = 10 
 
     ADD_SENSOR_NOISE = True
-    SENSOR_NOISE_STD = 0.05
+    SENSOR_NOISE_STD = 0.1 
     ADD_PROCESS_NOISE = True
     PROCESS_NOISE_STD = 0.005 
     SEED_VALUE = 42
 
-    day_tf = {'K': 1.133, 'tau': 2833.82, 'delay': 0.05}
-    night_tf = {'K': 2.049, 'tau': 4499.996, 'delay': 0.05}
+    day_tf = {'K': 1.346, 'tau': 1551.955, 'delay': 104.469}
+    night_tf = {'K': 2.355, 'tau': 3083.590, 'delay': 0.05}
 
-    MATLAB_PLANT = day_tf  
-    MATLAB_KP = 0.92
-    MATLAB_KI = 0.000974
+    MATLAB_PLANT = {'K': 86.7056, 'tau': 3287.0801, 'delay': 0.05}  
+    MATLAB_KP = 9.48910
+    MATLAB_KI = 0.00592
 
     random.seed(SEED_VALUE)
     np.random.seed(SEED_VALUE)
