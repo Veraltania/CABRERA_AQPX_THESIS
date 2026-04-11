@@ -28,7 +28,7 @@ class VirtualAquaculturePlant:
         self.dt = dt
         
         self.baseline_do = 1.0  
-        self.current_do = 1.0
+        self.current_do = 1.5
         self.active_tf = self.day_tf
         
         delay_steps = int(self.active_tf['delay'] / self.dt)
@@ -187,7 +187,7 @@ def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, target
             # --- CUSTOM STEP LOGIC ---
             old_setpoint = controller.setpoint
             step_size = 0.2  
-            new_setpoint = old_setpoint - step_size
+            new_setpoint = old_setpoint + step_size
             
             print(f"\n[MIL Sim] 🛑 Adaptive Retune Triggered at Virtual Time {v_clock.get_time()/3600.0:.2f} hrs!")
             print(f"[MIL Sim] Running synchronous closed-loop step test to {new_setpoint:.2f} mg/L...")
@@ -339,9 +339,9 @@ if __name__ == "__main__":
     PWM_WINDOW_MINUTES = 10 
 
     ADD_SENSOR_NOISE = True
-    SENSOR_NOISE_STD = 0.1 
+    SENSOR_NOISE_STD = 0.05 
     ADD_PROCESS_NOISE = True
-    PROCESS_NOISE_STD = 0.005 
+    PROCESS_NOISE_STD = 0.01
     SEED_VALUE = 42
 
     day_tf = {'K': 1.133, 'tau': 2833.82, 'delay': 0.05}

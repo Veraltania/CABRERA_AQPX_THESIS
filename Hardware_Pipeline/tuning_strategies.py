@@ -26,7 +26,7 @@ class AdaptiveTuningStrategy(TuningStrategy):
         # ISE and physical MAE thresholds
         self.noise_floor_ise = 100.0  
         self.shift_threshold = 0.50  
-        self.min_physical_error_threshold = 0.25 
+        self.min_physical_error_threshold = 0.1
         
         self.cooldown_active = False 
 
