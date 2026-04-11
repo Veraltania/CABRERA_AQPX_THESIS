@@ -12,7 +12,6 @@ from scipy.optimize import minimize
 # ==========================================
 # HARDWARE PIPELINE IMPORTS
 # ==========================================
-# (Adjust paths if your directory structure differs)
 from Evolutionary_Algorithm_Testing.de.de_optimizer import DEOptimizer
 from Hardware_Pipeline.controllers import DOController
 from Hardware_Pipeline.tuning_strategies import AdaptiveTuningStrategy, StaticTuningStrategy
@@ -21,111 +20,75 @@ from Hardware_Pipeline.tuning_strategies import AdaptiveTuningStrategy, StaticTu
 # 1. VIRTUAL HARDWARE CLASSES
 # ==========================================
 class VirtualAquaculturePlant:
-    """Simulates the physical DO response using First-Order Plus Dead Time (FOPDT)."""
     def __init__(self, day_tf, night_tf, dt=5.0, disturbances=None):
         self.day_tf = day_tf
         self.night_tf = night_tf
         self.dt = dt
-        
         self.baseline_do = 1.0  
         self.current_do = 1.0
         self.active_tf = self.day_tf
-        
         delay_steps = int(self.active_tf['delay'] / self.dt)
         self.u_buffer = collections.deque([0.0] * max(1, delay_steps), maxlen=max(1, delay_steps))
-        
         self.sim_time = 0.0
         self.disturbances = disturbances if disturbances else {}
         self.applied_disturbances = set()
 
-    def switch_to_day(self):
-        self.active_tf = self.day_tf
-
-    def switch_to_night(self):
-        self.active_tf = self.night_tf
+    def switch_to_day(self): self.active_tf = self.day_tf
+    def switch_to_night(self): self.active_tf = self.night_tf
 
     def step(self, u):
         K = self.active_tf['K']
         tau = self.active_tf['tau']
-        
         delayed_u = self.u_buffer.popleft()
         self.u_buffer.append(u)
-        
         deviation_do = self.current_do - self.baseline_do
         dy = (self.dt / tau) * ((K * delayed_u) - deviation_do)
         self.current_do += dy
-        
         self.sim_time += self.dt
         for d_time, d_val in self.disturbances.items():
             if self.sim_time >= d_time and d_time not in self.applied_disturbances:
                 self.current_do += d_val
                 self.applied_disturbances.add(d_time)
                 print(f"[Plant] ⚠️ Sudden Disturbance of {d_val} DO applied at {self.sim_time/3600:.2f} hrs")
-        
         return self.current_do
 
-
 class VirtualActuator:
-    def __init__(self):
-        self.duty_cycle = 0.0
-        
-    def set_duty_cycle(self, duty_cycle):
-        self.duty_cycle = max(0.0, min(1.0, duty_cycle))
-
+    def __init__(self): self.duty_cycle = 0.0
+    def set_duty_cycle(self, duty_cycle): self.duty_cycle = max(0.0, min(1.0, duty_cycle))
 
 class VirtualStrategyManager:
     def __init__(self, is_adaptive):
         if is_adaptive:
-            self.strategy = AdaptiveTuningStrategy(window_duration=1800)
+            # 1-Hour window for calculating Mean Absolute Error
+            self.strategy = AdaptiveTuningStrategy(window_duration=3600)
         else:
             self.strategy = StaticTuningStrategy()
 
-    def get_active_strategy(self):
-        return self.strategy
-
+    def get_active_strategy(self): return self.strategy
 
 class VirtualClock:
-    def __init__(self, start_time=0.0):
-        self.current_time = start_time
-
-    def tick(self, dt):
-        self.current_time += dt
-
-    def get_time(self):
-        return self.current_time
-
+    def __init__(self, start_time=0.0): self.current_time = start_time
+    def tick(self, dt): self.current_time += dt
+    def get_time(self): return self.current_time
 
 # ==========================================
 # 2. AUTO-TUNING & CUSTOM FITTER
 # ==========================================
 def auto_tune_gains(tf_name, tf_config):
     print(f"\n[Auto-Tuner] Running DE Optimization for {tf_name} Phase...")
-    
     tf_params = {
-        'tf_num': [tf_config['K']], 
-        'tf_den': [tf_config['tau'], 1], 
-        'tf_delay': tf_config['delay'],
-        'tf_n_pade': 2, 
-        'computed_delay': tf_config['delay'], 
-        'is_reverse_acting': False, 
-        'max_kp': 100.0
+        'tf_num': [tf_config['K']], 'tf_den': [tf_config['tau'], 1], 'tf_delay': tf_config['delay'],
+        'tf_n_pade': 2, 'computed_delay': tf_config['delay'], 'is_reverse_acting': False, 'max_kp': 100.0
     }
-
-    config = {
-        'patience': 20, 'tol': 1e-4, 'mutation': (0.5, 1.0),
-        'recombination': 0.745, 'strategy': 'best1bin'
-    }
-
+    config = {'patience': 20, 'tol': 1e-4, 'mutation': (0.5, 1.0), 'recombination': 0.745, 'strategy': 'best1bin'}
     optimizer = DEOptimizer(config, tf_params)
     best_kp, best_ki, best_cost, gens, history = optimizer.optimize_round(round_num=1)
-    
     print(f"[Auto-Tuner] {tf_name} Optimal Gains Found -> Kp: {best_kp:.4f}, Ki: {best_ki:.4f} (Cost: {best_cost:.4f})")
     return best_kp, best_ki
 
 def fit_closed_loop_fopdt(t_arr, u_arr, y_arr):
     t_arr, u_arr, y_arr = np.array(t_arr), np.array(u_arr), np.array(y_arr)
     dt = t_arr[1] - t_arr[0]
-    
     u0, y0 = u_arr[0], y_arr[0]
     du = u_arr - u0
     dy = y_arr - y0
@@ -134,11 +97,8 @@ def fit_closed_loop_fopdt(t_arr, u_arr, y_arr):
         K, tau, delay = params
         y_sim = np.zeros_like(t_arr)
         delay_steps = int(max(0.0, delay) / dt)
-        
         du_delayed = np.zeros_like(du)
-        if delay_steps < len(du):
-            du_delayed[delay_steps:] = du[:-delay_steps]
-            
+        if delay_steps < len(du): du_delayed[delay_steps:] = du[:-delay_steps]
         for i in range(1, len(t_arr)):
             derivative = (dt / max(1.0, tau)) * (K * du_delayed[i-1] - y_sim[i-1])
             y_sim[i] = y_sim[i-1] + derivative
@@ -150,58 +110,45 @@ def fit_closed_loop_fopdt(t_arr, u_arr, y_arr):
         
     bnds = ((0.1, 10.0), (10.0, 10000.0), (0.0, 500.0))
     initial_guess = [1.5, 1500.0, 10.0]
-    
     res = minimize(objective_function, initial_guess, bounds=bnds, method='L-BFGS-B')
     return res.x[0], res.x[1], res.x[2]
-
 
 # ==========================================
 # 3. PURE MATLAB BASELINE SIMULATION
 # ==========================================
-def run_matlab_baseline_simulation(matlab_tf, kp, ki, target_setpoint, 
-                                   sim_duration=86400, dt=5.0, 
+def run_matlab_baseline_simulation(matlab_tf, kp, ki, target_setpoint, sim_duration=86400, dt=5.0, 
                                    add_sensor_noise=False, sensor_noise_std=0.05,
-                                   add_process_noise=False, process_noise_std=0.005,
-                                   disturbances=None):
+                                   add_process_noise=False, process_noise_std=0.005, disturbances=None):
     plant = VirtualAquaculturePlant(day_tf=matlab_tf, night_tf=matlab_tf, dt=dt, disturbances=disturbances)
     integral_sum = 0.0
     current_time = 0.0
     time_history, do_history, u_history = [], [], []
-    
     print(f"\n--- Starting MATLAB Baseline (Hardcoded) Simulation ---")
 
     while current_time < sim_duration:
         current_do = plant.current_do
         if add_process_noise: current_do += random.gauss(0, process_noise_std)
         plant.current_do = current_do
-        
         measured_do = current_do
         if add_sensor_noise: measured_do += random.gauss(0, sensor_noise_std)
-        
         error = target_setpoint - measured_do
         tentative_int = integral_sum + (error * dt)
         pi_out = (kp * error) + (ki * tentative_int)
         clamped_out = max(0.0, min(1.0, pi_out))
         if 0.0 < pi_out < 1.0: integral_sum = tentative_int
-            
         plant.step(clamped_out)
         time_history.append(current_time / 3600.0)
         do_history.append(plant.current_do)
         u_history.append(clamped_out)
         current_time += dt
-        
-    # Return an empty list for retune_intervals so unpack signatures match
     return time_history, do_history, u_history, []
-
 
 # ==========================================
 # 4. HARDWARE PIPELINE SIMULATION LOOP
 # ==========================================
 def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, target_setpoint, 
-                   sim_duration=86400, dt=5.0, 
-                   add_sensor_noise=False, sensor_noise_std=0.05,
-                   add_process_noise=False, process_noise_std=0.005,
-                   disturbances=None):
+                   sim_duration=86400, dt=5.0, add_sensor_noise=False, sensor_noise_std=0.05,
+                   add_process_noise=False, process_noise_std=0.005, disturbances=None):
     
     plant = VirtualAquaculturePlant(day_tf, night_tf, dt=dt, disturbances=disturbances)
     actuator = VirtualActuator()
@@ -214,7 +161,7 @@ def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, target
     controller.ki = day_gains[1]
     
     time_history, do_history, u_history = [], [], []
-    retune_intervals = [] # ---> NEW: Track retuning start and end times
+    retune_intervals = [] 
     night_switched = False
     
     print(f"\n--- Starting Hardware Pipeline {'ADAPTIVE' if is_adaptive else 'NON-ADAPTIVE'} Simulation ---")
@@ -229,16 +176,12 @@ def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, target
         def sim_retune_full():
             if controller.retune_thread_active: return
             controller.retune_thread_active = True
-            
-            # ---> Mark the start time (in hours)
             start_hour = v_clock.get_time() / 3600.0
-            
             old_setpoint = controller.setpoint
             step_size = 0.2  
             new_setpoint = old_setpoint + step_size
             
-            print(f"\n[MIL Sim] 🛑 Adaptive Retune Triggered at Virtual Time {start_hour:.2f} hrs!")
-            
+            print(f"\n[MIL Sim] 🛑 Adaptive Retune Triggered natively by MAE at {start_hour:.2f} hrs!")
             controller.start_retuning_session(controller.target_column)
             controller.setpoint = new_setpoint
             step_start_t = v_clock.get_time()
@@ -270,7 +213,6 @@ def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, target
                 time_history.append(v_clock.get_time() / 3600.0)
                 do_history.append(plant.current_do)
                 u_history.append(actuator.duty_cycle)
-                
                 bump_t.append(v_clock.get_time())
                 bump_u.append(actuator.duty_cycle)
                 bump_y.append(plant.current_do)
@@ -302,7 +244,6 @@ def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, target
                     time_history.append(v_clock.get_time() / 3600.0)
                     do_history.append(plant.current_do)
                     u_history.append(actuator.duty_cycle)
-                    
                     bump_t.append(v_clock.get_time())
                     bump_u.append(actuator.duty_cycle)
                     bump_y.append(plant.current_do)
@@ -316,15 +257,12 @@ def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, target
                 
                 tf_params = {
                     'tf_num': [ex_K], 'tf_den': [safe_tau, 1], 'tf_delay': safe_delay,        
-                    'tf_n_pade': 2, 'computed_delay': safe_delay,
-                    'is_reverse_acting': ex_K < 0, 'max_kp': 20.0
+                    'tf_n_pade': 2, 'computed_delay': safe_delay, 'is_reverse_acting': ex_K < 0, 'max_kp': 20.0
                 }
-                
                 de_config = {
                     'population_size': 50, 'max_iters': 20, 'patience_limit': 5,
                     'mutation': (0.5, 1.0), 'recombination': 0.745, 'strategy': 'best1bin', 'n_rounds': 1
                 }
-                
                 optimizer = DEOptimizer(config=de_config, tf_params=tf_params)
                 best_Kp, best_Ki, _, _, _ = optimizer.optimize_round(round_num=1)
                 controller.update_tuning_parameters(best_Kp, best_Ki, ex_K, safe_tau, safe_delay)
@@ -333,8 +271,6 @@ def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, target
                 
             controller.setpoint = old_setpoint
             controller.retune_thread_active = False
-
-            # ---> Mark the end time (in hours) and save the interval
             end_hour = v_clock.get_time() / 3600.0
             retune_intervals.append((start_hour, end_hour))
 
@@ -353,6 +289,7 @@ def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, target
             measured_do = current_do
             if add_sensor_noise: measured_do += random.gauss(0, sensor_noise_std)
 
+            # Let the backend handle MAE calculations cleanly
             fake_payload = {'mcp_wq': {'do': measured_do}}
             controller.process(fake_payload)
             plant.step(actuator.duty_cycle)
@@ -365,11 +302,9 @@ def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, target
 
     return time_history, do_history, u_history, retune_intervals
 
-
 # ==========================================
 # 5. MAIN EXECUTION & PLOTTING
 # ==========================================
-
 if __name__ == "__main__":
     OUTPUT_DIR_NAME = "simulation_graphs"  
     TARGET_DO_SETPOINT = 1.5  
@@ -399,7 +334,6 @@ if __name__ == "__main__":
     random.seed(SEED_VALUE)
     np.random.seed(SEED_VALUE)
     
-    # Notice we unpack 4 variables now
     t_matlab, do_matlab, u_matlab, _ = run_matlab_baseline_simulation(
         matlab_tf=MATLAB_PLANT, kp=MATLAB_KP, ki=MATLAB_KI, 
         target_setpoint=TARGET_DO_SETPOINT, sim_duration=SIM_DURATION, dt=DT_STEP,
@@ -422,7 +356,6 @@ if __name__ == "__main__":
     )
 
     random.seed(SEED_VALUE) 
-    # Grab the intervals where the adaptive system was retuning
     t_adaptive, do_adaptive, u_adaptive, adaptive_intervals = run_simulation(
         is_adaptive=True, day_tf=day_tf, night_tf=night_tf, 
         day_gains=(day_kp, day_ki), night_gains=(night_kp, night_ki),
