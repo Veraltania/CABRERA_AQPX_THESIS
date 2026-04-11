@@ -24,7 +24,11 @@ class ParameterController(ABC):
         self.foptd_tau = init_tau
         self.foptd_delay = init_delay
 
-        self.log_file = f"{self.name.lower().replace(' ', '_')}_state.csv"
+        # --- FOLDER SETUP FOR LOGS ---
+        self.log_dir = "controller_logs"
+        os.makedirs(self.log_dir, exist_ok=True)
+        
+        self.log_file = os.path.join(self.log_dir, f"{self.name.lower().replace(' ', '_')}_state.csv")
         self.last_time = time.time()
         self.dt = 5.0
 
@@ -45,7 +49,11 @@ class ParameterController(ABC):
 
     def start_retuning_session(self, target_column):
         self.is_retuning = True
-        self.retuning_file = f"{self.name}_retuning_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        
+        # Route retuning file to the log directory
+        filename = f"{self.name}_retuning_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        self.retuning_file = os.path.join(self.log_dir, filename)
+        
         # ADDED 'Duty_Cycle' so the fitter can access the control signal
         self.retuning_headers = ['Date', 'Time', 'StatusCode', target_column, 'Duty_Cycle']
         with open(self.retuning_file, 'w', newline='') as f:
