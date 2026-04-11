@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
 from unittest.mock import patch
 import numpy as np
+from scipy.signal import savgol_filter  # Added for pre-filtering noisy bump data
 
 # ==========================================
 # HARDWARE PIPELINE IMPORTS
@@ -70,7 +71,7 @@ def auto_tune_gains(tf_name, tf_config):
         'tf_n_pade': 2, 
         'computed_delay': tf_config['delay'], 
         'is_reverse_acting': False, 
-        'max_kp': 3.0  # STRICT LIMIT: Forces DE bounds to stay under Kp=3.0
+        'max_kp': 3.0  
     }
     config = {'patience': 20, 'tol': 1e-4, 'mutation': (0.5, 1.0), 'recombination': 0.745, 'strategy': 'best1bin', 'population_size': 30, 'n_rounds': 1}
     optimizer = DEOptimizer(config, tf_params)
@@ -118,7 +119,8 @@ def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, target
     controller.kp = day_gains[0]
     controller.ki = day_gains[1]
     
-    time_history, do_history, u_history = [], [], []
+    # meas_do_history added to provide the fitter with true, noisy observed data rather than the oracle DO
+    time_history, do_history, meas_do_history, u_history = [], [], [], []
     night_switched = False
     
     print(f"\n--- Starting Hardware Pipeline {'ADAPTIVE' if is_adaptive else 'NON-ADAPTIVE'} Simulation ---")
@@ -133,7 +135,7 @@ def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, target
             controller.retune_thread_active = True
             
             old_setpoint = controller.setpoint
-            step_size = 0.5  # Keeps actuator below 100% saturation limit
+            step_size = 0.5 
             new_setpoint = old_setpoint + step_size
             
             print(f"\n[MIL Sim] 🛑 Adaptive Retune Triggered at {v_clock.get_time()/3600.0:.2f} hrs")
@@ -141,12 +143,12 @@ def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, target
             controller.setpoint = new_setpoint
             step_start_t = v_clock.get_time()
             
-            # PRE-FILL baseline logic
+            # PRE-FILL baseline logic uses the MEASURED data to match real-world sensor conditions
             baseline_samples = 30
             if len(time_history) >= baseline_samples:
                 bump_t = [t * 3600.0 for t in time_history[-baseline_samples:]]
                 bump_u = u_history[-baseline_samples:]
-                bump_y = do_history[-baseline_samples:]
+                bump_y = meas_do_history[-baseline_samples:]
             else:
                 bump_t, bump_u, bump_y = [], [], []
             
@@ -155,6 +157,7 @@ def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, target
             max_steps = int(3600 / dt) 
             reached = False
             
+            # 1. Step response phase
             for _ in range(max_steps):
                 v_clock.tick(dt)
                 curr_do = plant.current_do
@@ -165,26 +168,30 @@ def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, target
                 error = new_setpoint - meas_do
                 tentative_int = controller.integral_sum + (error * dt)
                 pi_out = (controller.kp * error) + (controller.ki * tentative_int)
-                pi_out = max(controller.min_out, min(controller.max_out, pi_out))
-                if controller.min_out < pi_out < controller.max_out: controller.integral_sum = tentative_int
+                
+                # Robustly enforce 0 to 1 bounds, mirroring hardware rather than relying on abstract controller vars
+                clamped_out = max(0.0, min(1.0, pi_out))
+                if 0.0 < pi_out < 1.0: controller.integral_sum = tentative_int
                 
                 controller._record_retuning_data(meas_do)
-                actuator.set_duty_cycle(pi_out)
+                actuator.set_duty_cycle(clamped_out)
                 plant.step(actuator.duty_cycle)
                 
                 time_history.append(v_clock.get_time() / 3600.0)
                 do_history.append(plant.current_do)
+                meas_do_history.append(meas_do)
                 u_history.append(actuator.duty_cycle)
                 
                 bump_t.append(v_clock.get_time())
                 bump_u.append(actuator.duty_cycle)
-                bump_y.append(plant.current_do)
+                bump_y.append(meas_do)  # Record strictly measured values
                 
-                if not reached and abs(plant.current_do - new_setpoint) <= tolerance:
+                if not reached and abs(meas_do - new_setpoint) <= tolerance:
                     rise_time = v_clock.get_time() - step_start_t
                     reached = True
                     break
                     
+            # 2. Tail stabilizing phase
             if reached:
                 tail_time_secs = 7200 
                 for _ in range(int(tail_time_secs / dt)):
@@ -197,34 +204,42 @@ def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, target
                     error = new_setpoint - meas_do
                     tentative_int = controller.integral_sum + (error * dt)
                     pi_out = (controller.kp * error) + (controller.ki * tentative_int)
-                    pi_out = max(controller.min_out, min(controller.max_out, pi_out))
-                    if controller.min_out < pi_out < controller.max_out: controller.integral_sum = tentative_int
+                    
+                    clamped_out = max(0.0, min(1.0, pi_out))
+                    if 0.0 < pi_out < 1.0: controller.integral_sum = tentative_int
                     
                     controller._record_retuning_data(meas_do)
-                    actuator.set_duty_cycle(pi_out)
+                    actuator.set_duty_cycle(clamped_out)
                     plant.step(actuator.duty_cycle)
                     
                     time_history.append(v_clock.get_time() / 3600.0)
                     do_history.append(plant.current_do)
+                    meas_do_history.append(meas_do)
                     u_history.append(actuator.duty_cycle)
                     
                     bump_t.append(v_clock.get_time())
                     bump_u.append(actuator.duty_cycle)
-                    bump_y.append(plant.current_do)
+                    bump_y.append(meas_do)  # Record strictly measured values
             
             controller.stop_retuning_session()
             
             try:
-                ex_K, ex_tau, ex_delay = fit_closed_loop_fopdt(bump_t, bump_u, bump_y)
+                # IMPORTANT: FOPDT relies on baseline initialization y[0]. Raw sensor noise can spike y[0] 
+                # and skew the whole fit. Smooth the curve purely for the fitter to deduce clean parameter estimates.
+                if len(bump_y) > 15:
+                    bump_y_fit = savgol_filter(bump_y, window_length=15, polyorder=3)
+                else:
+                    bump_y_fit = bump_y
+
+                ex_K, ex_tau, ex_delay = fit_closed_loop_fopdt(bump_t, bump_u, bump_y_fit)
                 safe_delay = max(0.05, ex_delay) 
                 safe_tau = max(1.0, ex_tau) 
                 
-                # INTEGRATE WITH YOUR CUSTOM DE ENGINE:
                 tf_params = {
                     'tf_num': [ex_K], 'tf_den': [safe_tau, 1], 'tf_delay': safe_delay,        
                     'tf_n_pade': 2, 'computed_delay': safe_delay,
                     'is_reverse_acting': ex_K < 0, 
-                    'max_kp': 3.0  # STRICT LIMIT: Prevents instability
+                    'max_kp': 3.0  
                 }
                 
                 de_config = {
@@ -263,6 +278,7 @@ def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, target
             
             time_history.append(v_clock.get_time() / 3600.0) 
             do_history.append(current_do)           
+            meas_do_history.append(measured_do)
             u_history.append(actuator.duty_cycle)
             
             v_clock.tick(dt)
