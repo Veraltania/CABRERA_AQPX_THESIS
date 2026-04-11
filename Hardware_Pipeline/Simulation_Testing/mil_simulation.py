@@ -2,6 +2,7 @@ import sys
 import os
 import collections
 import time
+import random
 import matplotlib.pyplot as plt
 from unittest.mock import patch
 
@@ -21,7 +22,7 @@ class VirtualAquaculturePlant:
         self.dt = dt
         
         self.baseline_do = 1.0  
-        self.current_do = 6.0 
+        self.current_do = 1.0
         self.active_tf = self.day_tf
         
         delay_steps = int(self.active_tf['delay'] / self.dt)
@@ -96,7 +97,11 @@ def auto_tune_gains(tf_name, tf_config):
 # 3. CORE SIMULATION LOOP
 # ==========================================
 
-def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, target_setpoint, sim_duration=86400, dt=5.0):
+def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, target_setpoint, 
+                   sim_duration=86400, dt=5.0, 
+                   add_sensor_noise=False, sensor_noise_std=0.05,
+                   add_process_noise=False, process_noise_std=0.005):
+    
     plant = VirtualAquaculturePlant(day_tf, night_tf, dt=dt)
     actuator = VirtualActuator()
     manager = MockStrategyManager()
@@ -107,7 +112,8 @@ def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, target
     controller.ki = day_gains[1]
     
     time_history = []
-    do_history = []
+    do_history = []       # The TRUE DO of the water
+    measured_do_history = [] # The NOISY DO the controller sees
     u_history = []
 
     virtual_time = 0.0 
@@ -125,14 +131,27 @@ def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, target
                     controller.kp = night_gains[0]
                     controller.ki = night_gains[1]
 
+            # 1. Apply Process Noise (Affects actual physical water DO)
+            if add_process_noise:
+                plant.current_do += random.gauss(0, process_noise_std)
+
             current_do = plant.current_do
-            fake_payload = {'mcp_wq': {'do': current_do}}
             
+            # 2. Apply Sensor Noise (Affects only the reading sent to the controller)
+            measured_do = current_do
+            if add_sensor_noise:
+                measured_do += random.gauss(0, sensor_noise_std)
+
+            fake_payload = {'mcp_wq': {'do': measured_do}}
+            
+            # Controller acts on the potentially noisy measurement
             controller.process(fake_payload)
             plant.step(actuator.duty_cycle)
             
+            # Record keeping
             time_history.append(t / 3600.0) 
-            do_history.append(current_do)
+            do_history.append(current_do)           # We plot the TRUE DO
+            measured_do_history.append(measured_do) # Keep track if you want to plot the noisy sensor later
             u_history.append(actuator.duty_cycle)
             
             virtual_time += dt 
@@ -149,7 +168,20 @@ if __name__ == "__main__":
     TARGET_DO_SETPOINT = 2.2
     SIM_DURATION = 86400 
     DT_STEP = 5.0
-    PWM_WINDOW_MINUTES = 30 # For generating the ON/OFF signal
+    PWM_WINDOW_MINUTES = 10 # For generating the ON/OFF signal
+
+    # --- NOISE CONFIGURATION ---
+    # Sensor Noise: Simulates electrical interference or poor probe readings. 
+    ADD_SENSOR_NOISE = True
+    SENSOR_NOISE_STD = 0.5
+    
+    # Process Noise: Simulates physical changes (fish breathing erratically, wind).
+    ADD_PROCESS_NOISE = True
+    PROCESS_NOISE_STD = 0.005 
+    
+    # Constant seed for apples-to-apples comparison
+    SEED_VALUE = 42
+    # ---------------------------
 
     day_tf = {'K': 1.346, 'tau': 1551.955, 'delay': 104.469}
     night_tf = {'K': 2.355, 'tau': 3083.590, 'delay': 0.05}
@@ -158,17 +190,23 @@ if __name__ == "__main__":
     night_kp, night_ki = auto_tune_gains("Nighttime", night_tf)
 
     print(f"\nRunning Baseline (Non-Adaptive) Model with Setpoint {TARGET_DO_SETPOINT}...")
+    random.seed(SEED_VALUE)  # Ensure identical noise sequence
     t_non_adaptive, do_non_adaptive, u_non_adaptive = run_simulation(
         is_adaptive=False, day_tf=day_tf, night_tf=night_tf, 
         day_gains=(day_kp, day_ki), night_gains=(night_kp, night_ki),
-        target_setpoint=TARGET_DO_SETPOINT, sim_duration=SIM_DURATION, dt=DT_STEP
+        target_setpoint=TARGET_DO_SETPOINT, sim_duration=SIM_DURATION, dt=DT_STEP,
+        add_sensor_noise=ADD_SENSOR_NOISE, sensor_noise_std=SENSOR_NOISE_STD,
+        add_process_noise=ADD_PROCESS_NOISE, process_noise_std=PROCESS_NOISE_STD
     )
 
     print(f"\nRunning Proposed (Adaptive) Model with Setpoint {TARGET_DO_SETPOINT}...")
+    random.seed(SEED_VALUE)  # Ensure identical noise sequence
     t_adaptive, do_adaptive, u_adaptive = run_simulation(
         is_adaptive=True, day_tf=day_tf, night_tf=night_tf, 
         day_gains=(day_kp, day_ki), night_gains=(night_kp, night_ki),
-        target_setpoint=TARGET_DO_SETPOINT, sim_duration=SIM_DURATION, dt=DT_STEP
+        target_setpoint=TARGET_DO_SETPOINT, sim_duration=SIM_DURATION, dt=DT_STEP,
+        add_sensor_noise=ADD_SENSOR_NOISE, sensor_noise_std=SENSOR_NOISE_STD,
+        add_process_noise=ADD_PROCESS_NOISE, process_noise_std=PROCESS_NOISE_STD
     )
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -179,14 +217,14 @@ if __name__ == "__main__":
     # PLOT 1: DO Comparison
     # ---------------------------------------------------------
     plt.figure(figsize=(12, 6))
-    plt.plot(t_non_adaptive, do_non_adaptive, label='Non-Adaptive', color='red', linestyle='--')
-    plt.plot(t_adaptive, do_adaptive, label='Adaptive', color='blue', linewidth=2)
+    plt.plot(t_non_adaptive, do_non_adaptive, label='Non-Adaptive (True DO)', color='red', linestyle='--', alpha=0.8)
+    plt.plot(t_adaptive, do_adaptive, label='Adaptive (True DO)', color='blue', linewidth=2, alpha=0.8)
     plt.axhline(y=TARGET_DO_SETPOINT, color='green', linestyle=':', label=f'Target Setpoint ({TARGET_DO_SETPOINT})')
     plt.axvline(x=12.0, color='gray', linestyle='-', alpha=0.5)
     plt.text(5, max(max(do_non_adaptive), max(do_adaptive)) - 0.5, 'DAYTIME', fontsize=12, fontweight='bold', alpha=0.6)
     plt.text(17, max(max(do_non_adaptive), max(do_adaptive)) - 0.5, 'NIGHTTIME', fontsize=12, fontweight='bold', alpha=0.6)
     
-    plt.title('Simulated DO Control: Adaptive vs Non-Adaptive PID')
+    plt.title('Simulated DO Control: Adaptive vs Non-Adaptive PID (With Disturbance/Noise)')
     plt.xlabel('Time (Hours)')
     plt.ylabel('Dissolved Oxygen (mg/L)')
     plt.ylim(bottom=0) 
@@ -202,53 +240,72 @@ if __name__ == "__main__":
     # PLOT 2: Literal ON/OFF Control Signal
     # ---------------------------------------------------------
     def generate_binary_pwm(t_hist_hours, u_hist, window_minutes):
-        """Translates the duty cycle (0-1) into an actual ON (1) / OFF (0) signal."""
+        """Translates the duty cycle (0-1) into an ON/OFF signal using Sample-and-Hold."""
         window_hours = window_minutes / 60.0
         binary_signal = []
+        
+        current_window_start = 0.0
+        # Sample the very first duty cycle to start
+        locked_u = u_hist[0] if u_hist else 0.0 
+        
         for t, u in zip(t_hist_hours, u_hist):
-            # Calculate where we are in the current PWM window
-            time_in_window = t % window_hours
+            # 1. Check if we've crossed into a new window
+            if t >= current_window_start + window_hours - 1e-5:
+                current_window_start += window_hours
+                locked_u = u  # Lock in the new duty cycle
+                
+            # 2. Calculate time elapsed purely within the CURRENT window
+            time_in_window = t - current_window_start
             
-            # If our current time in the window is less than the active ON-duration, aerator is ON
-            if time_in_window <= (u * window_hours):
+            # 3. Compare against the LOCKED duty cycle
+            if time_in_window <= (locked_u * window_hours):
                 binary_signal.append(1)
             else:
                 binary_signal.append(0)
+                
         return binary_signal
-
-    # Convert continuous duty cycles to discrete 1/0 square waves
-    na_on_off = generate_binary_pwm(t_non_adaptive, u_non_adaptive, PWM_WINDOW_MINUTES)
-    a_on_off = generate_binary_pwm(t_adaptive, u_adaptive, PWM_WINDOW_MINUTES)
-
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8), sharex=True, sharey=True)
-
-    # Subplot 1: Non-Adaptive
-    # Using fill_between to create clear visual "blocks" of ON time
-    ax1.fill_between(t_non_adaptive, 0, na_on_off, color='red', step='post', alpha=0.7)
-    ax1.axvline(x=12.0, color='gray', linestyle='-', alpha=0.8, linewidth=2)
-    ax1.set_title(f'Non-Adaptive Aerator State (Literal ON/OFF with {PWM_WINDOW_MINUTES}-min Window)')
-    ax1.set_ylabel('Relay State\n(1 = ON, 0 = OFF)')
-    ax1.set_yticks([0, 1])
-    ax1.grid(True, alpha=0.3, axis='x')
-    ax1.text(5, 1.1, 'DAYTIME', fontsize=10, fontweight='bold', alpha=0.6)
-    ax1.text(17, 1.1, 'NIGHTTIME', fontsize=10, fontweight='bold', alpha=0.6)
-
-    # Subplot 2: Adaptive
-    ax2.fill_between(t_adaptive, 0, a_on_off, color='blue', step='post', alpha=0.7)
-    ax2.axvline(x=12.0, color='gray', linestyle='-', alpha=0.8, linewidth=2)
-    ax2.set_title(f'Adaptive Aerator State (Literal ON/OFF with {PWM_WINDOW_MINUTES}-min Window)')
-    ax2.set_xlabel('Time (Hours)')
-    ax2.set_ylabel('Relay State\n(1 = ON, 0 = OFF)')
-    ax2.set_yticks([0, 1])
-    ax2.grid(True, alpha=0.3, axis='x')
     
-    # Force Y-axis to slightly pad the 0 to 1 range so blocks are fully visible
-    plt.ylim(-0.1, 1.3)
+    binary_non_adaptive = generate_binary_pwm(t_non_adaptive, u_non_adaptive, PWM_WINDOW_MINUTES)
+    binary_adaptive = generate_binary_pwm(t_adaptive, u_adaptive, PWM_WINDOW_MINUTES)
+
+    # Calculate total OFF time in hours (count of 0s * dt in hours)
+    dt_in_hours = DT_STEP / 3600.0
+    off_hours_non_adaptive = binary_non_adaptive.count(0) * dt_in_hours
+    off_hours_adaptive = binary_adaptive.count(0) * dt_in_hours
+
+    # 2. Create the figure
+    plt.figure(figsize=(12, 8))
+
+    # Top Subplot: Non-Adaptive
+    plt.subplot(2, 1, 1)
+    label_na = f'Non-Adaptive (Total OFF: {off_hours_non_adaptive:.2f} hrs)'
+    plt.step(t_non_adaptive, binary_non_adaptive, color='red', where='post', alpha=0.8)
+    plt.fill_between(t_non_adaptive, 0, binary_non_adaptive, step='post', color='red', alpha=0.3, label=label_na)
+    plt.axvline(x=12.0, color='gray', linestyle='-', alpha=0.5)
+    plt.title(f'Non-Adaptive ON/OFF Control Signal ({PWM_WINDOW_MINUTES}-min windows)')
+    plt.ylabel('State (1=ON, 0=OFF)')
+    plt.yticks([0, 1])
+    plt.legend(loc='upper right')
+    plt.grid(True, alpha=0.3)
+
+    # Bottom Subplot: Adaptive
+    plt.subplot(2, 1, 2)
+    label_a = f'Adaptive (Total OFF: {off_hours_adaptive:.2f} hrs)'
+    plt.step(t_adaptive, binary_adaptive, color='blue', where='post', alpha=0.8)
+    plt.fill_between(t_adaptive, 0, binary_adaptive, step='post', color='blue', alpha=0.3, label=label_a)
+    plt.axvline(x=12.0, color='gray', linestyle='-', alpha=0.5)
+    plt.title(f'Adaptive ON/OFF Control Signal ({PWM_WINDOW_MINUTES}-min windows)')
+    plt.xlabel('Time (Hours)')
+    plt.ylabel('State (1=ON, 0=OFF)')
+    plt.yticks([0, 1])
+    plt.legend(loc='upper right')
+    plt.grid(True, alpha=0.3)
+
     plt.tight_layout()
-    
-    power_save_path = os.path.join(output_dir, "aerator_on_off_state.png")
-    plt.savefig(power_save_path, dpi=300)
+
+    # 3. Save the plot to your directory
+    pwm_save_path = os.path.join(output_dir, "pwm_on_off_signal.png")
+    plt.savefig(pwm_save_path, dpi=300)
     plt.close()
 
-    print(f"\n[Success] DO Comparison Plot saved to {do_save_path}")
-    print(f"[Success] Literal ON/OFF Plot saved to {power_save_path}")
+    print(f"\n[Success] Simulation complete. Both plots saved to: {output_dir}")
