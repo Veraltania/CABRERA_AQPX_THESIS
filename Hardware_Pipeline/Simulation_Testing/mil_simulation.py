@@ -21,7 +21,7 @@ class VirtualAquaculturePlant:
         self.dt = dt
         
         self.baseline_do = 1.0  
-        self.current_do = 6.0 
+        self.current_do = self.baseline_do
         self.active_tf = self.day_tf
         
         delay_steps = int(self.active_tf['delay'] / self.dt)
@@ -151,8 +151,8 @@ if __name__ == "__main__":
     DT_STEP = 5.0
     PWM_WINDOW_MINUTES = 30 # For generating the ON/OFF signal
 
-    day_tf = {'K': 1.346, 'tau': 1551.955, 'delay': 104.469}
-    night_tf = {'K': 2.355, 'tau': 3083.590, 'delay': 0.05}
+    day_tf = {'K': 200*1.346, 'tau': 1551.955, 'delay': 0.05}
+    night_tf = {'K': 200*2.355, 'tau': 3083.590, 'delay': 0.05}
 
     day_kp, day_ki = auto_tune_gains("Daytime", day_tf)
     night_kp, night_ki = auto_tune_gains("Nighttime", night_tf)

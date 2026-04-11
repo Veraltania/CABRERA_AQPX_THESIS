@@ -12,13 +12,11 @@ import matplotlib.pyplot as plt
 
 try:
     from Evolutionary_Algorithm_Testing.de.de_optimizer import DEOptimizer
-    from Evolutionary_Algorithm_Testing.ga.ga_optimizer import GAOptimizer
-    from Evolutionary_Algorithm_Testing.pso.pso_optimizer import PSOOptimizer
 except ImportError as e:
-    print(f"CRITICAL ERROR: Could not import algorithm modules.\n{e}")
+    print(f"CRITICAL ERROR: Could not import DE algorithm module.\n{e}")
     exit(1)
 
-ALGO_MAP = {'DE': DEOptimizer, 'GA': GAOptimizer, 'PSO': PSOOptimizer}
+ALGO_MAP = {'DE': DEOptimizer}
 
 # --- 1. WORKER FUNCTION ---
 def worker(task):
@@ -64,13 +62,6 @@ def worker(task):
     run_config['pop_size'] = fixed_pop_size
     run_config['population_size'] = fixed_pop_size
     run_config['output_folder'] = output_folder
-
-    # Dynamic scaling for GA parameters
-    if algo_name == "GA":
-        if "mating_ratio" in run_config:
-            run_config["num_parents_mating"] = max(2, int(fixed_pop_size * run_config.pop("mating_ratio")))
-        if "elitism_ratio" in run_config:
-            run_config["keep_elitism"] = max(1, int(fixed_pop_size * run_config.pop("elitism_ratio")))
 
     try:
         optimizer_class = ALGO_MAP[algo_name]
@@ -164,23 +155,10 @@ if __name__ == "__main__":
     }
 
     algo_specific_configs = {
-        "GA": {
-            "mating_ratio": 0.55,
-            "elitism_ratio": 0.05,
-            "parent_selection_type": "rank",
-            "crossover_type": "scattered",
-        },
         "DE": {
             "mutation": (0.5, 1.0),
             "recombination": 0.75,
             "strategy": "best1bin"
-        },
-        "PSO": {
-            "c1": 2.0,
-            "c2": 2.0,
-            "w": 0.8,
-            "v_min": -1.0,
-            "v_max": 1.0
         }
     }
 
@@ -234,6 +212,9 @@ if __name__ == "__main__":
         }
     }
 
+    for tf_name, tf_data in transfer_functions.items():
+        tf_data['tf_delay'] = [100]
+
     total_global_start_time = time.time()
     script_dir = Path(__file__).parent.resolve()
 
@@ -272,7 +253,7 @@ if __name__ == "__main__":
             if df_results.empty:
                 print("No data collected for this transfer function.")
 
-            print("\nGenerating combined cost history graphs for each multiplier...")
+            print("\nGenerating cost history graphs for each multiplier...")
             target_round = shared_config['n_rounds']  # Usually 50
 
             for mult in MULTIPLIERS:
@@ -280,7 +261,7 @@ if __name__ == "__main__":
                 lines_plotted = 0
 
                 # Colors mapped for consistency across graphs
-                color_map = {'DE': '#1f77b4', 'GA': '#ff7f0e', 'PSO': '#2ca02c'}
+                color_map = {'DE': '#1f77b4'}
 
                 # --- FIRST PASS: Load data and determine the maximum iteration ---
                 loaded_data = {}
@@ -326,7 +307,7 @@ if __name__ == "__main__":
                     lines_plotted += 1
 
                 if lines_plotted > 0:
-                    plt.title(f'Algorithm Comparison: Cost Convergence - Gain x{mult} (Round {target_round})',
+                    plt.title(f'DE Cost Convergence - Gain x{mult} (Round {target_round})',
                               fontsize=14, fontweight='bold')
                     plt.ylabel('Cost', fontsize=12) 
                     plt.xlabel('Iteration', fontsize=12)
@@ -337,7 +318,7 @@ if __name__ == "__main__":
                     plt.grid(True, which='both', linestyle=':', linewidth=0.7)
                     plt.legend(loc='upper right', fontsize=11)
 
-                    plot_path = BASE_OUTPUT_DIR / f'combined_cost_history_mult_{mult:03d}.png'
+                    plot_path = BASE_OUTPUT_DIR / f'cost_history_mult_{mult:03d}.png'
                     plt.tight_layout()
                     plt.savefig(plot_path, dpi=300)
 
