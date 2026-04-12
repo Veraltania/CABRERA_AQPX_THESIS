@@ -85,7 +85,7 @@ def auto_tune_gains(tf_name, tf_config, weights=(1.0, 1.0, 1.0, 1.0)):
     print(f"\n[Auto-Tuner] Running DE Optimization for {tf_name} Phase...")
     tf_params = {
         'tf_num': [tf_config['K']], 'tf_den': [tf_config['tau'], 1], 'tf_delay': tf_config['delay'],
-        'tf_n_pade': 2, 'computed_delay': tf_config['delay'], 'is_reverse_acting': False, 'max_kp': 2.0
+        'tf_n_pade': 2, 'computed_delay': tf_config['delay'], 'is_reverse_acting': False, 'max_kp': 20.0
     }
     config = {
         'patience': 20, 
@@ -204,7 +204,7 @@ def main():
     day_tf = {'K': 1.133, 'tau': 2833.82, 'delay': 0.05}
     night_tf = {'K': 2.049, 'tau': 4499.996, 'delay': 0.05}
     
-    weights = (0.066, 0.066, 0.066, 0.8)
+    weights = (1.0, 1.0, 1.0, 1.0)
     matlab_plant = day_tf  
     matlab_kp = 0.92
     matlab_ki = 0.000974
@@ -282,30 +282,12 @@ def main():
     plt.close()
 
     # ---------------------------------------------------------
-    # PLOT 2: Literal ON/OFF Control Signal (2 Subplots)
+    # PLOT 2: Continuous Control Signal & Control Effort (AUC)
     # ---------------------------------------------------------
-    def generate_binary_pwm(t_hist_hours, u_hist, window_minutes):
-        window_hours = window_minutes / 60.0
-        binary_signal = []
-        current_window_start = 0.0
-        locked_u = u_hist[0] if u_hist else 0.0 
-        for t, u in zip(t_hist_hours, u_hist):
-            if t >= current_window_start + window_hours - 1e-5:
-                current_window_start += window_hours
-                locked_u = u  
-            time_in_window = t - current_window_start
-            if time_in_window <= (locked_u * window_hours):
-                binary_signal.append(1)
-            else:
-                binary_signal.append(0)
-        return binary_signal
-    
-    binary_matlab = generate_binary_pwm(t_matlab, u_matlab, pwm_window_minutes)
-    binary_non_adaptive = generate_binary_pwm(t_non_adaptive, u_non_adaptive, pwm_window_minutes)
-
-    dt_in_hours = dt_step / 3600.0
-    off_hours_matlab = binary_matlab.count(0) * dt_in_hours
-    off_hours_non_adaptive = binary_non_adaptive.count(0) * dt_in_hours
+    # Calculate Area Under the Curve (Control Effort) using Trapezoidal Rule
+    # Note: Time is in hours, so AUC is in (Duty Cycle * Hours)
+    auc_matlab = np.trapezoid(u_matlab, t_matlab)
+    auc_non_adaptive = np.trapezoid(u_non_adaptive, t_non_adaptive)
 
     plt.figure(figsize=(12, 7))
     
@@ -318,12 +300,13 @@ def main():
                     label='Disturbance Applied' if not added_dist_label else "")
         added_dist_label = True
 
-    plt.step(t_matlab, binary_matlab, color='black', where='post', alpha=0.8)
-    plt.fill_between(t_matlab, 0, binary_matlab, step='post', color='black', alpha=0.3, label=f'MATLAB (Total OFF: {off_hours_matlab:.2f} hrs)')
-    plt.title(f'MATLAB LTI Control Signal ({pwm_window_minutes}-min windows)')
-    plt.ylabel('State (1=ON, 0=OFF)')
-    plt.yticks([0, 1])
-    plt.legend(loc='lower right')
+    plt.plot(t_matlab, u_matlab, color='black', linewidth=1.5, alpha=0.9)
+    plt.fill_between(t_matlab, 0, u_matlab, color='black', alpha=0.3, 
+                     label=f'MATLAB Control Effort (AUC: {auc_matlab:.2f})')
+    plt.title('MATLAB LTI Continuous Control Signal')
+    plt.ylabel('Duty Cycle (0.0 to 1.0)')
+    plt.ylim(0, 1.05)
+    plt.legend(loc='upper right')
     plt.grid(True, alpha=0.3)
 
     # --- Hardware Subplot ---
@@ -335,21 +318,20 @@ def main():
                     label='Disturbance Applied' if not added_dist_label else "")
         added_dist_label = True
 
-    plt.step(t_non_adaptive, binary_non_adaptive, color='red', where='post', alpha=0.8)
-    plt.fill_between(t_non_adaptive, 0, binary_non_adaptive, step='post', color='red', alpha=0.3, label=f'Hardware Tuned (Total OFF: {off_hours_non_adaptive:.2f} hrs)')
+    plt.plot(t_non_adaptive, u_non_adaptive, color='red', linewidth=1.5, alpha=0.9)
+    plt.fill_between(t_non_adaptive, 0, u_non_adaptive, color='red', alpha=0.3, 
+                     label=f'Hardware Tuned Control Effort (AUC: {auc_non_adaptive:.2f})')
     plt.axvline(x=12.0, color='gray', linestyle='-', alpha=0.5)
-    plt.title(f'Hardware Tuned Control Signal ({pwm_window_minutes}-min windows)')
+    plt.title('Hardware Tuned Continuous Control Signal')
     plt.xlabel('Time (Hours)')
-    plt.ylabel('State (1=ON, 0=OFF)')
-    plt.yticks([0, 1])
-    plt.legend(loc='lower right')
+    plt.ylabel('Duty Cycle (0.0 to 1.0)')
+    plt.ylim(0, 1.05)
+    plt.legend(loc='upper right')
     plt.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, "pwm_on_off_signal_matlab_vs_hw.png"), dpi=300)
+    plt.savefig(os.path.join(output_dir, "continuous_control_signal_matlab_vs_hw.png"), dpi=300)
     plt.close()
-
-    print(f"\n[Success] Simulation complete. Both plots saved to: {output_dir}")
 
 if __name__ == "__main__":
     main()
