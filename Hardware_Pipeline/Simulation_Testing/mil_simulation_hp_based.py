@@ -33,8 +33,11 @@ class VirtualAquaculturePlant:
         self.disturbances = disturbances if disturbances else {}
         self.applied_disturbances = set()
 
-    def switch_to_day(self): self.active_tf = self.day_tf
-    def switch_to_night(self): self.active_tf = self.night_tf
+    def switch_to_day(self): 
+        self.active_tf = self.day_tf
+        
+    def switch_to_night(self): 
+        self.active_tf = self.night_tf
 
     def step(self, u):
         K = self.active_tf['K']
@@ -53,8 +56,11 @@ class VirtualAquaculturePlant:
         return self.current_do
 
 class VirtualActuator:
-    def __init__(self): self.duty_cycle = 0.0
-    def set_duty_cycle(self, duty_cycle): self.duty_cycle = max(0.0, min(1.0, duty_cycle))
+    def __init__(self): 
+        self.duty_cycle = 0.0
+        
+    def set_duty_cycle(self, duty_cycle): 
+        self.duty_cycle = max(0.0, min(1.0, duty_cycle))
 
 class VirtualStrategyManager:
     def __init__(self, is_adaptive):
@@ -64,12 +70,18 @@ class VirtualStrategyManager:
         else:
             self.strategy = StaticTuningStrategy()
 
-    def get_active_strategy(self): return self.strategy
+    def get_active_strategy(self): 
+        return self.strategy
 
 class VirtualClock:
-    def __init__(self, start_time=0.0): self.current_time = start_time
-    def tick(self, dt): self.current_time += dt
-    def get_time(self): return self.current_time
+    def __init__(self, start_time=0.0): 
+        self.current_time = start_time
+        
+    def tick(self, dt): 
+        self.current_time += dt
+        
+    def get_time(self): 
+        return self.current_time
 
 # ==========================================
 # 2. AUTO-TUNING & CUSTOM FITTER
@@ -78,11 +90,15 @@ def auto_tune_gains(tf_name, tf_config):
     print(f"\n[Auto-Tuner] Running DE Optimization for {tf_name} Phase...")
     tf_params = {
         'tf_num': [tf_config['K']], 'tf_den': [tf_config['tau'], 1], 'tf_delay': tf_config['delay'],
-        'tf_n_pade': 2, 'computed_delay': tf_config['delay'], 'is_reverse_acting': False, 'max_kp': 100.0
+        'tf_n_pade': 2, 'computed_delay': tf_config['delay'], 'is_reverse_acting': False, 'max_kp': 2.0
     }
     config = {'patience': 20, 'tol': 1e-4, 'mutation': (0.5, 1.0), 'recombination': 0.745, 'strategy': 'best1bin'}
     optimizer = DEOptimizer(config, tf_params)
-    best_kp, best_ki, best_cost, gens, history = optimizer.optimize_round(round_num=1)
+    
+    # Corrected unpacking based on updated DEOptimizer signature
+    best_sol, iterations = optimizer.optimize_round(round_num=1)
+    best_kp, best_ki, best_cost, raw_costs = best_sol
+    
     print(f"[Auto-Tuner] {tf_name} Optimal Gains Found -> Kp: {best_kp:.4f}, Ki: {best_ki:.4f} (Cost: {best_cost:.4f})")
     return best_kp, best_ki
 
@@ -155,7 +171,8 @@ def run_matlab_baseline_simulation(matlab_tf, kp, ki, target_setpoint, sim_durat
 # ==========================================
 def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, target_setpoint, 
                    sim_duration=86400, dt=5.0, add_sensor_noise=False, sensor_noise_std=0.05,
-                   add_process_noise=False, process_noise_std=0.005, disturbances=None):
+                   add_process_noise=False, process_noise_std=0.005, disturbances=None,
+                   adaptive_weights=(1.0, 1.0, 1.0, 1.0)):
     
     plant = VirtualAquaculturePlant(day_tf, night_tf, dt=dt, disturbances=disturbances)
     actuator = VirtualActuator()
@@ -222,8 +239,7 @@ def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, target
                 
                 # Check if buffer is full and variance is low enough
                 if len(do_buffer) == stability_window:
-                    # Check if the standard deviation is near the noise floor
-                    if np.std(do_buffer) <= (sensor_noise_std * 1.2): # Add a 20% margin
+                    if np.std(do_buffer) <= (sensor_noise_std * 1.2): 
                         is_stable = True
                         break
                         
@@ -290,14 +306,23 @@ def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, target
                 
                 tf_params = {
                     'tf_num': [ex_K], 'tf_den': [safe_tau, 1], 'tf_delay': safe_delay,        
-                    'tf_n_pade': 2, 'computed_delay': safe_delay, 'is_reverse_acting': ex_K < 0, 'max_kp': 20.0
+                    'tf_n_pade': 2, 'computed_delay': safe_delay, 'is_reverse_acting': ex_K < 0, 'max_kp': 2.0
                 }
                 de_config = {
-                    'population_size': 50, 'max_iters': 20, 'patience_limit': 5,
-                    'mutation': (0.5, 1.0), 'recombination': 0.745, 'strategy': 'best1bin', 'n_rounds': 1
+                    'population_size': 50, 'max_iters': 100, 
+                    'patience_limit': 5,
+                    'mutation': (0.5, 1.0), 
+                    'recombination': 0.745, 
+                    'strategy': 'best1bin', 
+                    'n_rounds': 1,
+                    'weights': adaptive_weights
                 }
                 optimizer = DEOptimizer(config=de_config, tf_params=tf_params)
-                best_Kp, best_Ki, _, _, _ = optimizer.optimize_round(round_num=1)
+                
+                # Corrected unpacking for inner simulation retune
+                best_sol, iterations = optimizer.optimize_round(round_num=1)
+                best_Kp, best_Ki, best_cost, raw_costs = best_sol
+                
                 controller.update_tuning_parameters(best_Kp, best_Ki, ex_K, safe_tau, safe_delay)
             except Exception as e:
                 print(f"[MIL Sim] Hardware retuning pipeline failed: {e}")
@@ -335,70 +360,73 @@ def run_simulation(is_adaptive, day_tf, night_tf, day_gains, night_gains, target
     return time_history, do_history, u_history, retune_intervals
 
 # ==========================================
-# 5. MAIN EXECUTION & PLOTTING
+# 5. MAIN EXECUTION & PLOTTING 
 # ==========================================
-if __name__ == "__main__":
-    OUTPUT_DIR_NAME = "simulation_graphs"  
-    TARGET_DO_SETPOINT = 1.5  
-    SIM_DURATION = 86400 
-    DT_STEP = 5.0
-    PWM_WINDOW_MINUTES = 60 
+def main():
+    # Defining localized execution variables to eliminate global scope contamination
+    output_dir_name = "simulation_graphs"  
+    target_do_setpoint = 1.5  
+    sim_duration = 86400 
+    dt_step = 5.0
+    pwm_window_minutes = 30 
 
-    ADD_SENSOR_NOISE = True
-    SENSOR_NOISE_STD = 0.05 
-    ADD_PROCESS_NOISE = True
-    PROCESS_NOISE_STD = 0.005 
-    SEED_VALUE = 42
+    add_sensor_noise = False
+    sensor_noise_std = 0.05 
+    add_process_noise = False
+    process_noise_std = 0.005 
+    seed_value = 42
 
     day_tf = {'K': 1.133, 'tau': 2833.82, 'delay': 0.05}
     night_tf = {'K': 2.049, 'tau': 4499.996, 'delay': 0.05}
-
-    MATLAB_PLANT = day_tf  
-    MATLAB_KP = 0.92
-    MATLAB_KI = 0.000974
     
-    SCHEDULED_DISTURBANCES = {
+    weights = (1.0, 1.0, 1.0, 1.0)
+    matlab_plant = day_tf  
+    matlab_kp = 0.92
+    matlab_ki = 0.000974
+    
+    scheduled_disturbances = {
         14400.0: -0.5,
         28800.0: +0.5,
         43200.0: -0.5,
         57600.0: +0.5
     }
-    random.seed(SEED_VALUE)
-    np.random.seed(SEED_VALUE)
+    
+    random.seed(seed_value)
+    np.random.seed(seed_value)
     
     t_matlab, do_matlab, u_matlab, _ = run_matlab_baseline_simulation(
-        matlab_tf=MATLAB_PLANT, kp=MATLAB_KP, ki=MATLAB_KI, 
-        target_setpoint=TARGET_DO_SETPOINT, sim_duration=SIM_DURATION, dt=DT_STEP,
-        add_sensor_noise=ADD_SENSOR_NOISE, sensor_noise_std=SENSOR_NOISE_STD,
-        add_process_noise=ADD_PROCESS_NOISE, process_noise_std=PROCESS_NOISE_STD,
-        disturbances=SCHEDULED_DISTURBANCES
+        matlab_tf=matlab_plant, kp=matlab_kp, ki=matlab_ki, 
+        target_setpoint=target_do_setpoint, sim_duration=sim_duration, dt=dt_step,
+        add_sensor_noise=add_sensor_noise, sensor_noise_std=sensor_noise_std,
+        add_process_noise=add_process_noise, process_noise_std=process_noise_std,
+        disturbances=scheduled_disturbances
     )
 
     day_kp, day_ki = auto_tune_gains("Daytime", day_tf)
     night_kp, night_ki = auto_tune_gains("Nighttime", night_tf)
 
-    random.seed(SEED_VALUE) 
+    random.seed(seed_value) 
     t_non_adaptive, do_non_adaptive, u_non_adaptive, _ = run_simulation(
         is_adaptive=False, day_tf=day_tf, night_tf=night_tf, 
         day_gains=(day_kp, day_ki), night_gains=(night_kp, night_ki),
-        target_setpoint=TARGET_DO_SETPOINT, sim_duration=SIM_DURATION, dt=DT_STEP,
-        add_sensor_noise=ADD_SENSOR_NOISE, sensor_noise_std=SENSOR_NOISE_STD,
-        add_process_noise=ADD_PROCESS_NOISE, process_noise_std=PROCESS_NOISE_STD,
-        disturbances=SCHEDULED_DISTURBANCES
+        target_setpoint=target_do_setpoint, sim_duration=sim_duration, dt=dt_step,
+        add_sensor_noise=add_sensor_noise, sensor_noise_std=sensor_noise_std,
+        add_process_noise=add_process_noise, process_noise_std=process_noise_std,
+        disturbances=scheduled_disturbances
     )
 
-    random.seed(SEED_VALUE) 
+    random.seed(seed_value) 
     t_adaptive, do_adaptive, u_adaptive, adaptive_intervals = run_simulation(
         is_adaptive=True, day_tf=day_tf, night_tf=night_tf, 
         day_gains=(day_kp, day_ki), night_gains=(night_kp, night_ki),
-        target_setpoint=TARGET_DO_SETPOINT, sim_duration=SIM_DURATION, dt=DT_STEP,
-        add_sensor_noise=ADD_SENSOR_NOISE, sensor_noise_std=SENSOR_NOISE_STD,
-        add_process_noise=ADD_PROCESS_NOISE, process_noise_std=PROCESS_NOISE_STD,
-        disturbances=SCHEDULED_DISTURBANCES
+        target_setpoint=target_do_setpoint, sim_duration=sim_duration, dt=dt_step,
+        add_sensor_noise=add_sensor_noise, sensor_noise_std=sensor_noise_std,
+        add_process_noise=add_process_noise, process_noise_std=process_noise_std,
+        disturbances=scheduled_disturbances
     )
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    output_dir = os.path.join(script_dir, OUTPUT_DIR_NAME)
+    output_dir = os.path.join(script_dir, output_dir_name)
     os.makedirs(output_dir, exist_ok=True)
 
     # ---------------------------------------------------------
@@ -416,7 +444,7 @@ if __name__ == "__main__":
 
     # ----> SHADE DISTURBANCES
     added_dist_label = False
-    for d_time in SCHEDULED_DISTURBANCES.keys():
+    for d_time in scheduled_disturbances.keys():
         d_time_h = d_time / 3600.0
         plt.axvspan(d_time_h, d_time_h + 0.5, color='salmon', alpha=0.3, 
                     label='Disturbance Applied' if not added_dist_label else "")
@@ -426,16 +454,15 @@ if __name__ == "__main__":
     plt.plot(t_non_adaptive, do_non_adaptive, label='Hardware: Non-Adaptive', color='red', linestyle='--', alpha=0.8)
     plt.plot(t_adaptive, do_adaptive, label='Hardware: Adaptive', color='blue', linewidth=2, alpha=0.8)
     
-    plt.axhline(y=TARGET_DO_SETPOINT, color='green', linestyle='-', label=f'Base Setpoint ({TARGET_DO_SETPOINT})')
-    plt.axhline(y=TARGET_DO_SETPOINT + 0.2, color='green', linestyle=':', alpha=0.6, label=f'Retune Bump Target (2.2)')
+    plt.axhline(y=target_do_setpoint, color='green', linestyle='-', label=f'Base Setpoint ({target_do_setpoint})')
+    plt.axhline(y=target_do_setpoint + 0.2, color='green', linestyle=':', alpha=0.6, label=f'Retune Bump Target (2.2)')
     
     plt.axvline(x=12.0, color='gray', linestyle='-', alpha=0.5)
     
-    # Text labels placed outside the top of the plot using axes coordinates
     ax.text(0.25, 1.01, 'DAYTIME', transform=ax.transAxes, fontsize=12, fontweight='bold', alpha=0.6, ha='center', va='bottom')
     ax.text(0.75, 1.01, 'NIGHTTIME', transform=ax.transAxes, fontsize=12, fontweight='bold', alpha=0.6, ha='center', va='bottom')
     
-    plt.title('Simulated DO Control: MATLAB Baseline vs Hardware Pipelines', y=1.05) # Push title slightly higher to make room for labels
+    plt.title('Simulated DO Control: MATLAB Baseline vs Hardware Pipelines', y=1.05)
     plt.xlabel('Time (Hours)')
     plt.ylabel('Dissolved Oxygen (mg/L)')
     plt.ylim(bottom=0) 
@@ -464,11 +491,11 @@ if __name__ == "__main__":
                 binary_signal.append(0)
         return binary_signal
     
-    binary_matlab = generate_binary_pwm(t_matlab, u_matlab, PWM_WINDOW_MINUTES)
-    binary_non_adaptive = generate_binary_pwm(t_non_adaptive, u_non_adaptive, PWM_WINDOW_MINUTES)
-    binary_adaptive = generate_binary_pwm(t_adaptive, u_adaptive, PWM_WINDOW_MINUTES)
+    binary_matlab = generate_binary_pwm(t_matlab, u_matlab, pwm_window_minutes)
+    binary_non_adaptive = generate_binary_pwm(t_non_adaptive, u_non_adaptive, pwm_window_minutes)
+    binary_adaptive = generate_binary_pwm(t_adaptive, u_adaptive, pwm_window_minutes)
 
-    dt_in_hours = DT_STEP / 3600.0
+    dt_in_hours = dt_step / 3600.0
     off_hours_matlab = binary_matlab.count(0) * dt_in_hours
     off_hours_non_adaptive = binary_non_adaptive.count(0) * dt_in_hours
     off_hours_adaptive = binary_adaptive.count(0) * dt_in_hours
@@ -477,7 +504,7 @@ if __name__ == "__main__":
     
     plt.subplot(3, 1, 1)
     added_dist_label = False
-    for d_time in SCHEDULED_DISTURBANCES.keys():
+    for d_time in scheduled_disturbances.keys():
         d_time_h = d_time / 3600.0
         plt.axvspan(d_time_h, d_time_h + 0.5, color='salmon', alpha=0.3, 
                     label='Disturbance Applied' if not added_dist_label else "")
@@ -485,7 +512,7 @@ if __name__ == "__main__":
 
     plt.step(t_matlab, binary_matlab, color='black', where='post', alpha=0.8)
     plt.fill_between(t_matlab, 0, binary_matlab, step='post', color='black', alpha=0.3, label=f'MATLAB (Total OFF: {off_hours_matlab:.2f} hrs)')
-    plt.title(f'MATLAB LTI Control Signal ({PWM_WINDOW_MINUTES}-min windows)')
+    plt.title(f'MATLAB LTI Control Signal ({pwm_window_minutes}-min windows)')
     plt.ylabel('State (1=ON, 0=OFF)')
     plt.yticks([0, 1])
     plt.legend(loc='lower right')
@@ -493,7 +520,7 @@ if __name__ == "__main__":
 
     plt.subplot(3, 1, 2)
     added_dist_label = False
-    for d_time in SCHEDULED_DISTURBANCES.keys():
+    for d_time in scheduled_disturbances.keys():
         d_time_h = d_time / 3600.0
         plt.axvspan(d_time_h, d_time_h + 0.5, color='salmon', alpha=0.3, 
                     label='Disturbance Applied' if not added_dist_label else "")
@@ -502,7 +529,7 @@ if __name__ == "__main__":
     plt.step(t_non_adaptive, binary_non_adaptive, color='red', where='post', alpha=0.8)
     plt.fill_between(t_non_adaptive, 0, binary_non_adaptive, step='post', color='red', alpha=0.3, label=f'Non-Adaptive (Total OFF: {off_hours_non_adaptive:.2f} hrs)')
     plt.axvline(x=12.0, color='gray', linestyle='-', alpha=0.5)
-    plt.title(f'Hardware Non-Adaptive Control Signal ({PWM_WINDOW_MINUTES}-min windows)')
+    plt.title(f'Hardware Non-Adaptive Control Signal ({pwm_window_minutes}-min windows)')
     plt.ylabel('State (1=ON, 0=OFF)')
     plt.yticks([0, 1])
     plt.legend(loc='lower right')
@@ -510,7 +537,7 @@ if __name__ == "__main__":
 
     plt.subplot(3, 1, 3)
     added_dist_label = False
-    for d_time in SCHEDULED_DISTURBANCES.keys():
+    for d_time in scheduled_disturbances.keys():
         d_time_h = d_time / 3600.0
         plt.axvspan(d_time_h, d_time_h + 0.5, color='salmon', alpha=0.3, 
                     label='Disturbance Applied' if not added_dist_label else "")
@@ -525,7 +552,7 @@ if __name__ == "__main__":
     plt.step(t_adaptive, binary_adaptive, color='blue', where='post', alpha=0.8)
     plt.fill_between(t_adaptive, 0, binary_adaptive, step='post', color='blue', alpha=0.3, label=f'Adaptive (Total OFF: {off_hours_adaptive:.2f} hrs)')
     plt.axvline(x=12.0, color='gray', linestyle='-', alpha=0.5)
-    plt.title(f'Hardware Adaptive Control Signal ({PWM_WINDOW_MINUTES}-min windows)')
+    plt.title(f'Hardware Adaptive Control Signal ({pwm_window_minutes}-min windows)')
     plt.xlabel('Time (Hours)')
     plt.ylabel('State (1=ON, 0=OFF)')
     plt.yticks([0, 1])
@@ -537,3 +564,6 @@ if __name__ == "__main__":
     plt.close()
 
     print(f"\n[Success] Simulation complete. Both plots saved to: {output_dir}")
+
+if __name__ == "__main__":
+    main()
