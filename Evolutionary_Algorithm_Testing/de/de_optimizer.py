@@ -22,7 +22,11 @@ class DEOptimizer(EvolutionaryOptimizer):
 
             # Apply weights and sum
             weighted_cost = sum(w * c for w, c in zip(self.weights, raw_costs))
-
+            
+            print("COST BATCH")
+            for w, c in zip(self.weights, raw_costs):
+                print(w*c)
+                
             # Track best manually for logging purposes
             if weighted_cost < best_sol_tracker['cost']:
                 best_sol_tracker['cost'] = weighted_cost
