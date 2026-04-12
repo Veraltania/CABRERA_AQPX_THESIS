@@ -386,7 +386,7 @@ def main():
     day_tf = {'K': 1.133, 'tau': 2833.82, 'delay': 0.05}
     night_tf = {'K': 2.049, 'tau': 4499.996, 'delay': 0.05}
     
-    weights = (1.0, 1.0, 1.0, 2.0)
+    weights = (1.0, 1.0, 1.0, 4.0)
     matlab_plant = day_tf  
     matlab_kp = 0.92
     matlab_ki = 0.000974
