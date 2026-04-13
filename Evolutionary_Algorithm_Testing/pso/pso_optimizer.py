@@ -88,5 +88,12 @@ class PSOOptimizer(EvolutionaryOptimizer):
         except EarlyStopping:
             iterations_run = len(run_state['history'])
 
-        final_Kp, final_Ki = best_sol_tracker['x']
+        # --- NEW SAFETY CHECK ---
+        if best_sol_tracker['x'] is None:
+            final_Kp, final_Ki = 0.0, 0.0
+            best_sol_tracker['cost'] = 1e9
+            best_sol_tracker['raw'] = (1e9, 1e9, 1e9, 1e9)
+        else:
+            final_Kp, final_Ki = best_sol_tracker['x']
+
         return (final_Kp, final_Ki, best_sol_tracker['cost'], best_sol_tracker['raw']), iterations_run, run_state['history']

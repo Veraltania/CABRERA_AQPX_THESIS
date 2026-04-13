@@ -80,5 +80,13 @@ class GAOptimizer(EvolutionaryOptimizer):
 
         ga_instance.run()
         iterations_run = ga_instance.generations_completed
-        final_Kp, final_Ki = best_sol_tracker['x']
+        
+        # --- NEW SAFETY CHECK ---
+        if best_sol_tracker['x'] is None:
+            final_Kp, final_Ki = 0.0, 0.0
+            best_sol_tracker['cost'] = 1e9
+            best_sol_tracker['raw'] = (1e9, 1e9, 1e9, 1e9)
+        else:
+            final_Kp, final_Ki = best_sol_tracker['x']
+            
         return (final_Kp, final_Ki, best_sol_tracker['cost'], best_sol_tracker['raw']), iterations_run, tracker.history

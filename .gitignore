@@ -45,6 +45,10 @@ env/
 .ipynb_checkpoints/
 .vscode/
 
+# ignore specific files
+raw_cost_history_round_*.csv
+raw_cost_history_round_*
+
 # --- WRITING TOOLS (LaTeX Junk) ---
 *.aux
 *.log

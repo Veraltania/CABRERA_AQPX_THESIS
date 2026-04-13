@@ -70,5 +70,11 @@ class DEOptimizer(EvolutionaryOptimizer):
             polish=False
         )
 
-        final_Kp, final_Ki = best_sol_tracker['x']
+        if best_sol_tracker['x'] is None:
+            final_Kp, final_Ki = 0.0, 0.0
+            best_sol_tracker['cost'] = 1e9
+            best_sol_tracker['raw'] = (1e9, 1e9, 1e9, 1e9)
+        else:
+            final_Kp, final_Ki = best_sol_tracker['x']
+
         return (final_Kp, final_Ki, best_sol_tracker['cost'], best_sol_tracker['raw']), result.nit, tracker.history
