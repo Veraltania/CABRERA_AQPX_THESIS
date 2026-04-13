@@ -22,25 +22,45 @@ def generic_worker_run(args):
 
     # Instantiate the dynamic optimizer class
     optimizer = opt_class(run_config, tf_params)
-    optimizer.run_experiment()
-
-    # Extract histories
-    bin_costs = optimizer.agg_history['costs']
-    bin_iters = optimizer.agg_history['iterations']
-    raw_histories = optimizer.agg_history.get('histories', [])
     
+    # --- REFACTORED LOGIC ---
+    # Bypass the missing 'run_experiment'/'agg_history' by managing the runs directly
+    num_runs = run_config.get('num_runs', 5) # Default to 5 runs per bin if not specified
+    max_iters = run_config.get('max_iters', 100) # Default to 100 for padding
+    
+    bin_costs = []
+    bin_iters = []
+    raw_histories = []
+    
+    # Execute the optimize_round directly for the number of runs
+    for r in range(num_runs):
+        # Unpack: best_sol = (final_Kp, final_Ki, cost, raw_costs)
+        best_sol, iters, history = optimizer.optimize_round(r)
+        
+        # Extract the weighted cost from the returned solution tuple (index 2)
+        cost = best_sol[2]
+        
+        bin_costs.append(cost)
+        bin_iters.append(iters)
+        raw_histories.append(history)
+
+    # --- END REFACTORED LOGIC ---
+
     avg_convergence_curve = None
     if raw_histories:
         padded_histories = []
-        max_len = run_config['max_iters']
         for h in raw_histories:
             h_list = list(h)
             if not h_list: continue
-            if len(h_list) < max_len:
-                h_list.extend([h_list[-1]] * (max_len - len(h_list)))
-            elif len(h_list) > max_len:
-                h_list = h_list[:max_len]
+            
+            # Pad short histories with their final value if early stopping triggered
+            if len(h_list) < max_iters:
+                h_list.extend([h_list[-1]] * (max_iters - len(h_list)))
+            elif len(h_list) > max_iters:
+                h_list = h_list[:max_iters]
+                
             padded_histories.append(h_list)
+            
         if padded_histories:
             avg_convergence_curve = np.mean(padded_histories, axis=0)
 
