@@ -13,7 +13,7 @@ from Evolutionary_Algorithm_Testing.de.de_optimizer import DEOptimizer
 # ==========================================
 class FOPDTPlant:
     """First-Order Plus Dead Time (FOPDT) Virtual Plant"""
-    def __init__(self, K, tau, delay, dt=1.0, initial_do=5.0, baseline_do=1.0):
+    def __init__(self, K, tau, delay, dt=1.0, initial_do=5.0, baseline_do=0.0):
         self.K = K
         self.tau = tau
         self.dt = dt
@@ -150,34 +150,57 @@ def main():
     os.makedirs(output_dir, exist_ok=True)
 
     # 1. System Definition
-    plant_tf = {'K': 1.5, 'tau': 3500.0, 'delay': 0.05} 
+    plant_tf = {'K': 2.43, 'tau': 3492.589, 'delay': 0.05} 
     dt_step = 1.0
 
     test_sequence = StepSequence(
-        base_sp=4.0,             # Starting DO level
-        step_sp=5.0,             # Target DO level during the step
-        pre_step_delay=2000,     # Time before the first step
-        step_duration=2000,      # How long it stays at the stepped value
-        recovery_duration=2000,  # How long it stays recovered before next cycle/end
-        cycles=2                 # Number of step cycles
+        base_sp=0.0,             
+        step_sp=1.0,             
+        pre_step_delay=15000,     
+        step_duration=15000,      
+        recovery_duration=15000,  
+        cycles=2                 
     )
 
+    max_kp = 3
+    min_kp = 0
+    max_ki = 0.05
+    min_ki = 0.0001
     # 3. Define Tuners [Error, Control Effort, Overshoot, Rise Time]
+    # Add your specific min/max bounds directly to the configuration dictionary
     tuner_configs = [
-        {"name": "Baseline", "weights": (1.0, 1.0, 1.0, 1.0), "color": "blue"},
-        {"name": "Low-Effort", "weights": (0.5, 2.5, 0.5, 0.5), "color": "green"},
-        {"name": "Aggressive", "weights": (3.5/3, 0.5, 3.5/3, 3.5/3), "color": "magenta"}
+        {
+            "name": "Baseline", 
+            "weights": (1.0, 1.0, 1.0, 1.0), 
+            "color": "blue",
+            "bounds": {"min_kp": min_kp, "max_kp": max_kp, "min_ki": min_ki, "max_ki": max_ki}
+        },
+        {
+            "name": "Low-Effort", 
+            "weights": (0.5, 2.5, 0.5, 0.5), 
+            "color": "green",
+            "bounds": {"min_kp": min_kp, "max_kp": max_kp, "min_ki": min_ki, "max_ki": max_ki} 
+        },
+        {
+            "name": "Aggressive", 
+            "weights": (3.5, 0.1, 0.1, 3.5), 
+            "color": "magenta",
+            "bounds": {"min_kp": min_kp, "max_kp": max_kp, "min_ki": min_ki, "max_ki": max_ki}
+        }
     ]
 
     results = []
 
     # 4. Tune and Simulate
     for cfg in tuner_configs:
-        kp, ki = run_de_tuner(cfg["name"], plant_tf, cfg["weights"], max_kp=5.0)
+        # Extract bounds safely (defaults to empty dict if omitted from config)
+        bounds = cfg.get("bounds", {})
+        
+        # Unpack the bounds kwargs directly into the tuner
+        kp, ki = run_de_tuner(cfg["name"], plant_tf, cfg["weights"], **bounds)
         
         controller = PIController(kp=kp, ki=ki, dt=dt_step)
         
-        # Pass the custom sequence to the simulator
         t, y, u, sp = Simulator.run(plant_tf, controller, sequence=test_sequence, dt=dt_step)
         
         results.append({
@@ -185,12 +208,10 @@ def main():
             "t": t, "y": y, "u": u, "sp": sp, "kp": kp, "ki": ki
         })
 
-    # 5. Plotting
+    # 5. Plotting (Unchanged)
     print("\n--- Generating Plots ---")
     
     plt.figure(figsize=(10, 6))
-    
-    # Plot reference line from the dynamic sequence
     plt.plot(results[0]["t"], results[0]["sp"], color='black', linewidth=1.5, label='Reference Setpoint')
     
     for res in results:
@@ -201,7 +222,7 @@ def main():
     plt.xlabel('Time (s)')
     plt.ylabel('Dissolved Oxygen (mg l$^{-1}$)')
     plt.xlim(0, test_sequence.total_duration)
-    plt.ylim(3.0, 6.0) 
+    plt.ylim(0.0, 3.0) 
     plt.legend(loc='upper right')
     plt.grid(True, alpha=0.3)
     plt.tight_layout()

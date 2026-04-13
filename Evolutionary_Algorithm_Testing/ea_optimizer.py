@@ -97,7 +97,7 @@ def fast_fbest_diffeq(Kp_ctrl, Ki_ctrl, K_plant, T_plant, delay, avg_rise_time):
     norm_error = int_error / T_sim
     norm_effort = int_control / T_sim
     peak_y = np.max(y_vals)
-    norm_overshoot = max(0.0, peak_y - 1.0) / 0.2
+    norm_overshoot = max(0.0, peak_y - 1.0) / 0.5
     norm_rise_time = rise_time / avg_rise_time
 
     if norm_error > 1.0 or norm_effort > 1.0 or norm_overshoot > 1.0 or norm_rise_time > 1.0:
