@@ -148,7 +148,7 @@ class EvolutionaryOptimizer(ABC):
         self.K_plant = tf_params['tf_num'][0]
         self.T_plant = tf_params['tf_den'][0]
         self.delay = tf_params.get('computed_delay', 0.5)
-        self.avg_rise_time = tf_params.get('avg_rise_time', self.T_plant * 2.0)
+        self.avg_rise_time = tf_params.get('avg_rise_time', self.T_plant * 2.2)
 
         self.is_reverse_acting = tf_params.get('is_reverse_acting', self.K_plant < 0)
         self.max_kp = tf_params.get('max_kp', None)

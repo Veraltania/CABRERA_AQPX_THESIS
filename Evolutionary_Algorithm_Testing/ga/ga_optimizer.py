@@ -54,9 +54,9 @@ class GAOptimizer(EvolutionaryOptimizer):
         safe_limit = float(self.max_kp) if self.max_kp is not None else (-2.0 if self.is_reverse_acting else 2.0)
 
         if self.is_reverse_acting:
-            bounds = [{'low': safe_limit, 'high': -0.001}, {'low': -0.01, 'high': -1e-6}]
+            bounds = [{'low': safe_limit, 'high': -0.001}, {'low': -0.005, 'high': -1e-6}]
         else:
-            bounds = [{'low': 0.001, 'high': safe_limit}, {'low': 1e-6, 'high': 0.01}]
+            bounds = [{'low': 0.001, 'high': safe_limit}, {'low': 1e-6, 'high': 0.005}]
 
         ga_instance = pygad.GA(
             num_generations=self.max_iters,

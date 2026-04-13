@@ -22,11 +22,7 @@ class DEOptimizer(EvolutionaryOptimizer):
 
             # Apply weights and sum
             weighted_cost = sum(w * c for w, c in zip(self.weights, raw_costs))
-            
-            print("COST BATCH")
-            for w, c in zip(self.weights, raw_costs):
-                print(w*c)
-                
+        
             # Track best manually for logging purposes
             if weighted_cost < best_sol_tracker['cost']:
                 best_sol_tracker['cost'] = weighted_cost
@@ -58,9 +54,9 @@ class DEOptimizer(EvolutionaryOptimizer):
         safe_limit = float(self.max_kp) if self.max_kp is not None else (-2.0 if self.is_reverse_acting else 2.0)
 
         if self.is_reverse_acting:
-            bounds = [(safe_limit, -0.001), (-0.01, -0.0001)]
+            bounds = [(safe_limit, -0.001), (-0.005, -0.0001)]
         else:
-            bounds = [(0.001, safe_limit), (0.0001, 0.01)]
+            bounds = [(0.001, safe_limit), (0.0001, 0.005)]
 
         result = differential_evolution(
             scalar_cost_wrapper,

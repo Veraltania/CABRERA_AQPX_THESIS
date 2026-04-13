@@ -193,18 +193,18 @@ def main():
     target_do_setpoint = 1.5  
     sim_duration = 86400 
     dt_step = 5.0
-    pwm_window_minutes = 30 
 
-    add_sensor_noise = False
-    sensor_noise_std = 0.05 
-    add_process_noise = False
-    process_noise_std = 0.005 
+    add_sensor_noise = True
+    sensor_noise_std = 0.0 
+    add_process_noise = True
+    process_noise_std = 0.0
     seed_value = 42
 
     day_tf = {'K': 1.133, 'tau': 2833.82, 'delay': 0.05}
     night_tf = {'K': 2.049, 'tau': 4499.996, 'delay': 0.05}
     
-    weights = (1.0, 1.0, 1.0, 1.0)
+    # New: List of Weights for [Error, Effort, Overshoot, RiseTime]
+    weights = [1.0, 2.0, 1.0, 1.0]
     matlab_plant = day_tf  
     matlab_kp = 0.92
     matlab_ki = 0.000974

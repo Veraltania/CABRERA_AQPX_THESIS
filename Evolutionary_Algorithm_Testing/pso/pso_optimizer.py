@@ -58,11 +58,11 @@ class PSOOptimizer(EvolutionaryOptimizer):
         safe_limit = float(self.max_kp) if self.max_kp is not None else (-2.0 if self.is_reverse_acting else 2.0)
 
         if self.is_reverse_acting:
-            min_kp, max_kp = safe_limit, -0.001
-            min_ki, max_ki = -0.01, -0.0001
+            min_kp, max_kp = safe_limit, -0.005
+            min_ki, max_ki = -0.005, -0.0001
         else:
             min_kp, max_kp = 0.001, safe_limit
-            min_ki, max_ki = 0.0001, 0.01
+            min_ki, max_ki = 0.0001, 0.005
 
         bounds = (
             np.array([min_kp, min_ki], dtype=np.float64),
