@@ -61,10 +61,11 @@ def worker(task):
     run_config['population_size'] = pop_size
     run_config['output_folder'] = output_folder
 
-    # --- NEW: Inject custom boundaries per transfer function into the optimizer config ---
-    for bound_key in ['min_kp', 'max_kp', 'min_ki', 'max_ki']:
-        if bound_key in tf_params:
-            run_config[bound_key] = tf_params[bound_key]
+    # --- NEW: Inject custom boundaries and flags per transfer function into the optimizer config ---
+    keys_to_inject = ['min_kp', 'max_kp', 'min_ki', 'max_ki', 'is_reverse_acting']
+    for config_key in keys_to_inject:
+        if config_key in tf_params:
+            run_config[config_key] = tf_params[config_key]
 
     if algo_name == "GA":
         if "mating_ratio" in run_config:
@@ -191,53 +192,13 @@ if __name__ == "__main__":
     max_ki_do = 0.05
     min_ki_do = 0
 
-    max_kp_tds = 0 # basically zero
+    # Ensure bounds symmetrically mirror direct acting to prevent Ki clamping to 0
+    max_kp_tds = 0 
     min_kp_tds = -3.0
-    max_ki_tds = 0.0 
-    min_ki_tds = -1e-6
+    max_ki_tds = 0
+    min_ki_tds = -0.05 
 
     transfer_functions = {
-        # f"{sweep_type}_do_feb5_daytime": {
-        #     'tf_num': [1.346], 'tf_den': [1551.955, 1], 'tf_delay': 0.0,
-        #     'tf_n_pade': 2, 'computed_delay': 0.05, 'is_reverse_acting': False, 
-        #     'min_kp': min_kp_do, 'max_kp': max_kp_do, 'min_ki': min_ki_do, 'max_ki': max_ki_do
-        # },
-        # f"{sweep_type}_do_feb7_daytime": {
-        #     'tf_num': [1.133], 'tf_den': [2833.82, 1], 'tf_delay': 0.0,
-        #     'tf_n_pade': 2, 'computed_delay': 0.05, 'is_reverse_acting': False, 
-        #     'min_kp': min_kp_do, 'max_kp': max_kp_do, 'min_ki': min_ki_do, 'max_ki': max_ki_do
-        # },
-        # f"{sweep_type}_do_feb25_daytime": {
-        #     'tf_num': [2.287], 'tf_den': [3010.296, 1], 'tf_delay': 0.0,
-        #     'tf_n_pade': 2, 'computed_delay': 0.05, 'is_reverse_acting': False, 
-        #     'min_kp': min_kp_do, 'max_kp': max_kp_do, 'min_ki': min_ki_do, 'max_ki': max_ki_do
-        # },
-        # f"{sweep_type}_do_feb26_daytime": {
-        #     'tf_num': [2.430], 'tf_den': [3492.589, 1], 'tf_delay': 0.0,
-        #     'tf_n_pade': 2, 'computed_delay': 0.05, 'is_reverse_acting': False, 
-        #     'min_kp': min_kp_do, 'max_kp': max_kp_do, 'min_ki': min_ki_do, 'max_ki': max_ki_do
-        # },
-        # f"{sweep_type}_do_feb5_nighttime": {
-        #     'tf_num': [2.355], 'tf_den': [3083.590, 1], 'tf_delay': 0.0,
-        #     'tf_n_pade': 2, 'computed_delay': 0.05, 'is_reverse_acting': False, 
-        #     'min_kp': min_kp_do, 'max_kp': max_kp_do, 'min_ki': min_ki_do, 'max_ki': max_ki_do
-        # },
-        # f"{sweep_type}_do_feb7_nighttime": {
-        #     'tf_num': [2.049], 'tf_den': [4499.996, 1], 'tf_delay': 0.0,
-        #     'tf_n_pade': 2, 'computed_delay': 0.05, 'is_reverse_acting': False, 
-        #     'min_kp': min_kp_do, 'max_kp': max_kp_do, 'min_ki': min_ki_do, 'max_ki': max_ki_do
-        # },
-        # f"{sweep_type}_do_feb25_nighttime": {
-        #     'tf_num': [3.923], 'tf_den': [3012.232, 1], 'tf_delay': 0.0,
-        #     'tf_n_pade': 2, 'computed_delay': 0.05, 'is_reverse_acting': False, 
-        #     'min_kp': min_kp_do, 'max_kp': max_kp_do, 'min_ki': min_ki_do, 'max_ki': max_ki_do
-        # },
-        # f"{sweep_type}_do_feb26_nighttime": {
-        #     'tf_num': [3.132], 'tf_den': [2530.052, 1], 'tf_delay': 0,
-        #     'tf_n_pade': 2, 'computed_delay': 0.05, 'is_reverse_acting': False, 
-        #     'min_kp': min_kp_do, 'max_kp': max_kp_do, 'min_ki': min_ki_do, 'max_ki': max_ki_do
-        # },
-        # Reverse-acting Systems:
         f"{sweep_type}_tds_feb09_10": {
             'tf_num': [-21.082], 'tf_den': [71160.91, 1], 'tf_delay': 0,
             'tf_n_pade': 2, 'computed_delay': 0.05, 'is_reverse_acting': True, 

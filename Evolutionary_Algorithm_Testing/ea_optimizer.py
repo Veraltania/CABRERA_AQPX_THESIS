@@ -31,7 +31,11 @@ function dde_system(du, u, h, p, t)
     end
 
     u_raw = Kp_c * (past_setpoint - past_y) + Ki_c * past_int_e
-    u_delayed = clamp(u_raw, 0.0, 1.0)
+    
+    # FIXED: Actuator must allow negative control effort (-1.0 to 1.0) 
+    # to drive a reverse-acting (negative gain) plant to a positive setpoint.
+    u_delayed = clamp(u_raw, -1.0, 1.0)
+    
     du[1] = (K_p * u_delayed - y) / T_p
     e = 1.0 - y
     du[2] = e
@@ -134,26 +138,27 @@ class EvolutionaryOptimizer(ABC):
         self.is_reverse_acting = tf_params.get('is_reverse_acting', self.K_plant < 0)
         
         # --- Search Space Bounds ---
-        # Fetch overrides from config, falling back to dynamic defaults
-        default_safe_limit = float(tf_params.get('max_kp', -2.0 if self.is_reverse_acting else 2.0))
-        
+        # FIXED: Prioritize tf_params explicitly, then config, then logical defaults
         if self.is_reverse_acting:
-            self.min_kp = config.get('min_kp', default_safe_limit)
-            self.max_kp = config.get('max_kp', -0.001)
-            self.min_ki = config.get('min_ki', -0.005)
-            self.max_ki = config.get('max_ki', -1e-6)
+            self.min_kp = float(tf_params.get('min_kp', config.get('min_kp', -2.0)))
+            self.max_kp = float(tf_params.get('max_kp', config.get('max_kp', -0.001)))
+            self.min_ki = float(tf_params.get('min_ki', config.get('min_ki', -0.05)))
+            self.max_ki = float(tf_params.get('max_ki', config.get('max_ki', -1e-6)))
         else:
-            self.min_kp = config.get('min_kp', 0.001)
-            self.max_kp = config.get('max_kp', default_safe_limit)
-            self.min_ki = config.get('min_ki', 1e-6)
-            self.max_ki = config.get('max_ki', 0.005)
+            self.min_kp = float(tf_params.get('min_kp', config.get('min_kp', 0.001)))
+            self.max_kp = float(tf_params.get('max_kp', config.get('max_kp', 2.0)))
+            self.min_ki = float(tf_params.get('min_ki', config.get('min_ki', 1e-6)))
+            self.max_ki = float(tf_params.get('max_ki', config.get('max_ki', 0.05)))
 
         self._raw_tf_params = tf_params
         self._lazy_plant = None
         self.memo_cache = {}
 
     def calculate_cost(self, Kp, Ki):
-        if (self.is_reverse_acting and Kp > 0) or (not self.is_reverse_acting and Kp < 0):
+        # FIXED: Ensure boundaries strictly enforce *both* parameters mathematically
+        if self.is_reverse_acting and (Kp > 0 or Ki > 0):
+            return (1e9, 1e9, 1e9, 1e9)
+        if not self.is_reverse_acting and (Kp < 0 or Ki < 0):
             return (1e9, 1e9, 1e9, 1e9)
 
         cache_key = (round(float(Kp), 5), round(float(Ki), 5))
