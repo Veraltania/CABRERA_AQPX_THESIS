@@ -81,15 +81,27 @@ class VirtualClock:
 # ==========================================
 # 2. AUTO-TUNING (COST FUNCTION BASED)
 # ==========================================
-def auto_tune_gains(tf_name, tf_config, weights=(1.0, 1.0, 1.0, 1.0)):
+def auto_tune_gains(tf_name, tf_config, weights=(1.0, 1.0, 1.0, 1.0), 
+                    min_kp=0.001, max_kp=20.0, min_ki=1e-6, max_ki=0.05):
     print(f"\n[Auto-Tuner] Running DE Optimization for {tf_name} Phase...")
+    
+    # Pass the min/max bounds directly into tf_params
     tf_params = {
-        'tf_num': [tf_config['K']], 'tf_den': [tf_config['tau'], 1], 'tf_delay': tf_config['delay'],
-        'tf_n_pade': 2, 'computed_delay': tf_config['delay'], 'is_reverse_acting': False, 'max_kp': 20.0
+        'tf_num': [tf_config['K']], 
+        'tf_den': [tf_config['tau'], 1], 
+        'tf_delay': tf_config['delay'],
+        'tf_n_pade': 2, 
+        'computed_delay': tf_config['delay'], 
+        'is_reverse_acting': False, 
+        'min_kp': min_kp,
+        'max_kp': max_kp,
+        'min_ki': min_ki,
+        'max_ki': max_ki
     }
+    
     config = {
-        'patience': 20, 
-        'tol': 1e-4, 
+        'patience_limit': 20, 
+        'improvement_tol': 1e-4, 
         'mutation': (0.5, 1.0), 
         'recombination': 0.745, 
         'strategy': 'best1bin',
@@ -97,7 +109,7 @@ def auto_tune_gains(tf_name, tf_config, weights=(1.0, 1.0, 1.0, 1.0)):
     }
     optimizer = DEOptimizer(config, tf_params)
     
-    best_sol, iterations = optimizer.optimize_round(round_num=1)
+    best_sol, iterations, history = optimizer.optimize_round(round_num=1)
     best_kp, best_ki, best_cost, raw_costs = best_sol
     
     print(f"[Auto-Tuner] {tf_name} Optimal Gains Found -> Kp: {best_kp:.4f}, Ki: {best_ki:.4f} (Cost: {best_cost:.4f})")
@@ -204,10 +216,12 @@ def main():
     night_tf = {'K': 2.049, 'tau': 4499.996, 'delay': 0.05}
     
     # New: List of Weights for [Error, Effort, Overshoot, RiseTime]
-    weights = [1.0, 1.0, 1.0, 1.0]
+    control_effort_weight = 1.0
+    other_param_weight = (4 - control_effort_weight)/3
+    weights = [other_param_weight, control_effort_weight, other_param_weight, other_param_weight]
     matlab_plant = day_tf  
-    matlab_kp = 0.92
-    matlab_ki = 0.000974
+    matlab_kp = 0.70
+    matlab_ki = 0.0064
     
     scheduled_disturbances = {
         14400.0: -0.5,
@@ -229,8 +243,21 @@ def main():
     )
 
     # Run Hardware Optimizer (Cost Function Based)
-    day_kp, day_ki = auto_tune_gains("Daytime", day_tf, weights=weights)
-    night_kp, night_ki = auto_tune_gains("Nighttime", night_tf, weights=weights)
+    day_kp, day_ki = auto_tune_gains(
+        "Daytime", 
+        day_tf, 
+        weights=weights,
+        min_kp=0.0, max_kp=3.0,    
+        min_ki=0.0001, max_ki=0.05
+    )
+    
+    night_kp, night_ki = auto_tune_gains(
+        "Nighttime", 
+        night_tf, 
+        weights=weights,
+        min_kp=0.0, max_kp=3.0,    
+        min_ki=0.0001, max_ki=0.05
+    )
 
     # Run Hardware Non-Adaptive Simulation
     random.seed(seed_value) 
