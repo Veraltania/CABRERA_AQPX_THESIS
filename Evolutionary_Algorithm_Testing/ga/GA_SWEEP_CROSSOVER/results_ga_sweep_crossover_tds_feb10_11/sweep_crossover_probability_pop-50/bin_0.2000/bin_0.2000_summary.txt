@@ -1,7 +1,0 @@
---- CrossoverSweepGA EXPERIMENT SUMMARY ---
-Total Rounds: 50
-Average Iterations: 33.3
-Average Cost:  20001638.72
------------------------------
-Kp: -10.56134 (+/- 2.25786)
-Ki: -0.003852 (+/- 0.003415)

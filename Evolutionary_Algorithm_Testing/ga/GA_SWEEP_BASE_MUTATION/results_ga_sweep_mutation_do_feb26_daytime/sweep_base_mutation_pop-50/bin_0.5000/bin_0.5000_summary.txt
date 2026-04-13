@@ -1,7 +1,0 @@
---- BaseMutationSweepGA EXPERIMENT SUMMARY ---
-Total Rounds: 50
-Average Iterations: 40.4
-Average Cost:  839.05
------------------------------
-Kp: 9.96323 (+/- 0.86536)
-Ki: 0.003164 (+/- 0.000902)
