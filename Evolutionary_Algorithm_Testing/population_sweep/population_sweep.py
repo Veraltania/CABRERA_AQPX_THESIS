@@ -177,7 +177,7 @@ if __name__ == "__main__":
     pop_sizes = list(range(START_POP, END_POP + 1, STEP_SIZE))
     if pop_sizes[-1] != END_POP: pop_sizes.append(END_POP)
 
-    batch_dir = "BATCH_OPENLOOP_3"
+    batch_dir = "BATCH_OPENLOOP"
     sweep_type = "population_sweep"
 
     transfer_functions = {
@@ -258,14 +258,12 @@ if __name__ == "__main__":
             raw_results = list(tqdm(pool.imap(worker, tasks), total=len(tasks)))
             df_results = save_checkpoint(raw_results, BASE_OUTPUT_DIR)
 
-            # --- COST HISTORY GRAPHING ---
+            # --- COST HISTORY GRAPHING WITH BROKEN Y-AXIS ---
             print("\nGenerating combined cost history graphs for each population size...")
             target_round = shared_config['n_rounds']  
-            target_max_iter = 50  # Cap the convergence plot to 50 iterations
+            target_max_iter = 50  
 
             for pop_size in pop_sizes:
-                plt.figure(figsize=(10, 6))
-                lines_plotted = 0
                 color_map = {'DE': '#1f77b4', 'GA': '#ff7f0e', 'PSO': '#2ca02c'}
                 loaded_data = {}
 
@@ -277,56 +275,83 @@ if __name__ == "__main__":
                     if history_file.exists():
                         try:
                             df_hist = pd.read_csv(history_file)
-                            # Strictly filter out anything past iter 50
                             df_hist = df_hist[df_hist['Iteration'] <= target_max_iter]
                             if not df_hist.empty:
                                 loaded_data[algo] = df_hist
                         except Exception as e:
                             print(f"Failed to load {algo} pop {pop_size}: {e}")
 
-                # 2. Find a reasonable max Y-limit to ignore 1e9 initial penalties
+                if not loaded_data:
+                    continue
+
+                # 2. Find valid cost ranges to setup the split zoom
+                min_valid_cost = float('inf')
                 max_valid_cost = 0.0
                 for algo, df_hist in loaded_data.items():
                     valid_costs = df_hist['Cost'][df_hist['Cost'] < 1e8]
                     if not valid_costs.empty:
+                        min_valid_cost = min(min_valid_cost, valid_costs.min())
                         max_valid_cost = max(max_valid_cost, valid_costs.max())
 
-                # 3. Plot Data
+                if min_valid_cost == float('inf'):
+                    continue
+
+                # Setup broken axis (top: zoom range, bottom: anchors to 0)
+                fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True, figsize=(10, 6), gridspec_kw={'height_ratios': [4, 1]})
+                fig.subplots_adjust(hspace=0.08)
+
+                # 3. Plot Data on both axes
                 for algo, df_hist in loaded_data.items():
                     last_iter = df_hist['Iteration'].iloc[-1]
                     last_cost = df_hist['Cost'].iloc[-1]
 
-                    # Pad the dataframe horizontally to iteration 50 if it stopped early
                     if last_iter < target_max_iter:
                         pad_iters = list(range(int(last_iter) + 1, target_max_iter + 1))
                         pad_df = pd.DataFrame({'Iteration': pad_iters, 'Cost': [last_cost] * len(pad_iters)})
                         df_hist = pd.concat([df_hist, pad_df], ignore_index=True)
 
-                    plt.plot(
-                        df_hist['Iteration'],
-                        df_hist['Cost'],
-                        linewidth=2.5,
-                        color=color_map.get(algo, 'black'),
-                        label=f"{algo} (Final Cost: {last_cost:.4f})"
-                    )
-                    lines_plotted += 1
+                    # Plot on Top
+                    ax1.plot(df_hist['Iteration'], df_hist['Cost'], linewidth=2.5, 
+                             color=color_map.get(algo, 'black'), label=f"{algo} (Final Cost: {last_cost:.4f})")
+                    # Plot on Bottom
+                    ax2.plot(df_hist['Iteration'], df_hist['Cost'], linewidth=2.5, color=color_map.get(algo, 'black'))
 
-                if lines_plotted > 0:
-                    plt.title(f'Algorithm Comparison: Cost Convergence - Pop {pop_size}', fontsize=14, fontweight='bold')
-                    plt.ylabel('Cost', fontsize=12)
-                    plt.xlabel('Iteration', fontsize=12)
-                    plt.xlim(0, target_max_iter) 
-                    
-                    if max_valid_cost > 0:
-                        plt.ylim(0, max_valid_cost * 1.05) # Add 5% padding above highest valid curve point
-                    
-                    plt.grid(True, which='both', linestyle=':', linewidth=0.7)
-                    plt.legend(loc='upper right', fontsize=11)
+                # Determine the zoomed range for the top graph
+                y_margin = (max_valid_cost - min_valid_cost) * 0.1 if max_valid_cost > min_valid_cost else min_valid_cost * 0.1
+                if y_margin == 0: y_margin = 0.1
+                
+                top_min = min_valid_cost - y_margin
+                if top_min <= 0:
+                    top_min = min_valid_cost * 0.5 # Force a break margin if it naturally drops to 0
 
-                    plot_path = BASE_OUTPUT_DIR / f'combined_cost_history_pop_{pop_size:03d}.png'
-                    plt.tight_layout()
-                    plt.savefig(plot_path, dpi=300)
+                ax1.set_ylim(top_min, max_valid_cost + y_margin)
+                ax2.set_ylim(0, top_min * 0.15) # Only show the absolute bottom near 0
 
+                # Hide the spines bridging the gap
+                ax1.spines['bottom'].set_visible(False)
+                ax2.spines['top'].set_visible(False)
+                ax1.xaxis.tick_top()
+                ax1.tick_params(labeltop=False, bottom=False) 
+                ax2.xaxis.tick_bottom()
+
+                # Add the two red, dotted lines for the break effect
+                ax1.axhline(ax1.get_ylim()[0], color='red', linestyle=':', linewidth=2.5)
+                ax2.axhline(ax2.get_ylim()[1], color='red', linestyle=':', linewidth=2.5)
+
+                # Styling
+                ax1.set_title(f'Algorithm Comparison: Cost Convergence - Pop {pop_size}', fontsize=14, fontweight='bold')
+                ax2.set_xlabel('Iteration', fontsize=12)
+                fig.text(0.04, 0.5, 'Cost', va='center', rotation='vertical', fontsize=12)
+                
+                ax1.set_xlim(0, target_max_iter)
+                ax2.set_xlim(0, target_max_iter)
+                
+                ax1.grid(True, which='both', linestyle=':', linewidth=0.7)
+                ax2.grid(True, which='both', linestyle=':', linewidth=0.7)
+                ax1.legend(loc='upper right', fontsize=11)
+
+                plot_path = BASE_OUTPUT_DIR / f'combined_cost_history_pop_{pop_size:03d}.png'
+                plt.savefig(plot_path, dpi=300, bbox_inches='tight')
                 plt.close()
 
             end_time_sec = time.time()
@@ -338,7 +363,6 @@ if __name__ == "__main__":
 
             print(f"\n--- SWEEP FINISHED: {end_datetime.strftime('%Y-%m-%d %H:%M:%S')} ---")
             
-            # Save Execution Timing
             total_timing_filename = os.path.join(BASE_OUTPUT_DIR, f"execution_timing_total_{timestamp_str}.csv")
             with open(total_timing_filename, mode='w', newline='') as file:
                 writer = csv.writer(file)

@@ -1,7 +1,0 @@
---- DE EXPERIMENT SUMMARY ---
-Total Rounds: 50
-Average Iterations: 9.8
-Average Cost:  1660.50
------------------------------
-Kp: 9.93993 (+/- 0.14894)
-Ki: 0.003639 (+/- 0.000038)
