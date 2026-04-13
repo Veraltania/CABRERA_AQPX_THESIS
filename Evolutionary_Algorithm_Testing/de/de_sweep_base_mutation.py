@@ -69,8 +69,8 @@ if __name__ == '__main__':
     # --- 3. SWEEP CONFIGURATION ---
     # Mutation for DE typically ranges from 0 to 2. 
     start_value = 0.1
-    end_value = 2.0
-    num_bins = 20
+    end_value = 1.5
+    num_bins = 15
     
     dynamic_values = np.linspace(start_value, end_value, num_bins).tolist()
     

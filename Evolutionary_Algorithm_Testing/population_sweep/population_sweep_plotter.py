@@ -6,7 +6,7 @@ from pathlib import Path
 
 def generate_broken_axis_replots():
     # --- Configuration ---
-    BASE_DATA_DIR = Path("Evolutionary_Algorithm_Testing/population_sweep/BATCH_DO_OPENLOOP")
+    BASE_DATA_DIR = Path("Evolutionary_Algorithm_Testing/population_sweep/BATCH_OPENLOOP")
     START_POP = 10
     END_POP = 100
     STEP_SIZE = 10
