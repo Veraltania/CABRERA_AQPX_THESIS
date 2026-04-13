@@ -47,7 +47,7 @@ function dde_system(du, u, h, p, t)
     du[3] = abs(e)
 
     # IAE: Control Effort
-    du[4] = abs(u_delayed)
+    du[4] = u_delayed^2
 end
 
 function dde_history(p, t)
