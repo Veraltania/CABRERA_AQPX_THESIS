@@ -19,7 +19,8 @@ class PSOOptimizer(EvolutionaryOptimizer):
         
         run_state = {
             'best_cost': float('inf'),
-            'patience_counter': 0
+            'patience_counter': 0,
+            'history': []
         }
 
         def objective_function(particles):
@@ -49,6 +50,8 @@ class PSOOptimizer(EvolutionaryOptimizer):
             else:
                 if run_state['best_cost'] < 1e8:
                     run_state['patience_counter'] += 1
+
+            run_state['history'].append(run_state['best_cost'] if run_state['best_cost'] < 1e8 else 1e9)
 
             if run_state['patience_counter'] >= self.patience:
                 raise EarlyStopping()
@@ -83,7 +86,7 @@ class PSOOptimizer(EvolutionaryOptimizer):
         try:
             _ = optimizer.optimize(objective_function, iters=self.max_iters, verbose=False)
         except EarlyStopping:
-            iterations_run = len(optimizer.cost_history)
+            iterations_run = len(run_state['history'])
 
         final_Kp, final_Ki = best_sol_tracker['x']
-        return (final_Kp, final_Ki, best_sol_tracker['cost'], best_sol_tracker['raw']), iterations_run
+        return (final_Kp, final_Ki, best_sol_tracker['cost'], best_sol_tracker['raw']), iterations_run, run_state['history']

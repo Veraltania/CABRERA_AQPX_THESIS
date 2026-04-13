@@ -9,6 +9,7 @@ import csv
 from pathlib import Path
 import math
 import matplotlib.pyplot as plt
+import numpy as np
 
 try:
     from Evolutionary_Algorithm_Testing.de.de_optimizer import DEOptimizer
@@ -27,8 +28,6 @@ def worker(task):
     output_folder = os.path.join(base_output_folder, algo_name, f"pop_{pop_size}")
 
     # --- MICRO-LEVEL RESUME CHECK ---
-    # If the CSV already exists, skip computation and just read the data
-    # Updated to ONLY look for the main detailed log, ignoring raw history CSVs
     search_pattern = os.path.join(output_folder, "*_detailed_log.csv")
     found_files = glob.glob(search_pattern)
 
@@ -51,7 +50,7 @@ def worker(task):
             "kp": kp_results,
             "ki": ki_results,
             "iters": iter_results,
-            "elapsed_time": 0.0  # 0 seconds spent computing this run
+            "elapsed_time": 0.0
         }
     # --------------------------------
 
@@ -62,7 +61,6 @@ def worker(task):
     run_config['population_size'] = pop_size
     run_config['output_folder'] = output_folder
 
-    # Dynamic scaling for GA parameters
     if algo_name == "GA":
         if "mating_ratio" in run_config:
             run_config["num_parents_mating"] = max(2, int(pop_size * run_config.pop("mating_ratio")))
@@ -86,11 +84,7 @@ def worker(task):
             "elapsed_time": worker_end_time - worker_start_time
         }
 
-    cost_results = []
-    kp_results = []
-    ki_results = []
-    iter_results = []
-
+    cost_results, kp_results, ki_results, iter_results = [], [], [], []
     found_files = glob.glob(search_pattern)
 
     if found_files:
@@ -134,7 +128,6 @@ def save_checkpoint(all_data, base_output_dir):
 
     if not rows: return pd.DataFrame()
     df = pd.DataFrame(rows)
-    # Save checkpoint into the base output directory
     filename = os.path.join(base_output_dir, f"checkpoint_sweep_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
     df.to_csv(filename, index=False)
     print(f"Checkpoint saved to: {filename}")
@@ -146,8 +139,6 @@ if __name__ == "__main__":
     multiprocessing.set_start_method('spawn', force=True)
 
     total_cores = multiprocessing.cpu_count()
-
-    # Calculate 75% and ensure it's at least 1 core
     num_cores = max(1, math.floor(total_cores * 0.75))
 
     START_POP = 10
@@ -250,72 +241,65 @@ if __name__ == "__main__":
 
             os.makedirs(BASE_OUTPUT_DIR, exist_ok=True)
 
-            # --- MACRO-LEVEL RESUME CHECK ---
             existing_checkpoints = glob.glob(os.path.join(BASE_OUTPUT_DIR, "checkpoint_sweep_*.csv"))
             if existing_checkpoints:
                 print(f"[RESUME] Skipping TF {idx + 1} ({base_dir}): Master checkpoint already exists.")
                 continue
-            # --------------------------------
 
             start_time_sec = time.time()
             start_datetime = datetime.now()
             timestamp_str = start_datetime.strftime('%Y%m%d_%H%M%S')
             print(f"--- SWEEP STARTED: {start_datetime.strftime('%Y-%m-%d %H:%M:%S')} ---")
-            print(f"Running on {num_cores} cores to prevent Memory Overflows...")
-
+            
             tasks = [(algo, size, shared_config, tf_params, BASE_OUTPUT_DIR, algo_specific_configs.get(algo, {}))
                      for algo in ALGO_MAP.keys()
                      for size in pop_sizes]
 
             raw_results = list(tqdm(pool.imap(worker, tasks), total=len(tasks)))
-
             df_results = save_checkpoint(raw_results, BASE_OUTPUT_DIR)
 
-            if df_results.empty:
-                print("No data collected for this transfer function.")
-
+            # --- COST HISTORY GRAPHING ---
             print("\nGenerating combined cost history graphs for each population size...")
-            target_round = shared_config['n_rounds']  # Usually 50
+            target_round = shared_config['n_rounds']  
+            target_max_iter = 50  # Cap the convergence plot to 50 iterations
 
             for pop_size in pop_sizes:
                 plt.figure(figsize=(10, 6))
                 lines_plotted = 0
-
-                # Colors mapped for consistency across graphs
                 color_map = {'DE': '#1f77b4', 'GA': '#ff7f0e', 'PSO': '#2ca02c'}
-
-                # --- FIRST PASS: Load data and determine the maximum iteration ---
                 loaded_data = {}
-                max_iter_found = 0
 
+                # 1. Load Data
                 for algo in ALGO_MAP.keys():
-                    # Construct path to the saved raw history
                     algo_dir = BASE_OUTPUT_DIR / algo / f"pop_{pop_size}"
                     history_file = algo_dir / f"raw_cost_history_round_{target_round:03d}.csv"
 
                     if history_file.exists():
                         try:
                             df_hist = pd.read_csv(history_file)
-                            loaded_data[algo] = df_hist
-                            current_max = df_hist['Iteration'].max()
-                            if current_max > max_iter_found:
-                                max_iter_found = current_max
+                            # Strictly filter out anything past iter 50
+                            df_hist = df_hist[df_hist['Iteration'] <= target_max_iter]
+                            if not df_hist.empty:
+                                loaded_data[algo] = df_hist
                         except Exception as e:
                             print(f"Failed to load {algo} pop {pop_size}: {e}")
 
-                # Set the target max iteration to at least 50 (or higher if an algo ran longer)
-                target_max_iter = max(50, int(max_iter_found))
+                # 2. Find a reasonable max Y-limit to ignore 1e9 initial penalties
+                max_valid_cost = 0.0
+                for algo, df_hist in loaded_data.items():
+                    valid_costs = df_hist['Cost'][df_hist['Cost'] < 1e8]
+                    if not valid_costs.empty:
+                        max_valid_cost = max(max_valid_cost, valid_costs.max())
 
-                # --- SECOND PASS: Pad early-stopping algorithms and plot ---
+                # 3. Plot Data
                 for algo, df_hist in loaded_data.items():
                     last_iter = df_hist['Iteration'].iloc[-1]
                     last_cost = df_hist['Cost'].iloc[-1]
 
-                    # Pad the dataframe if the algorithm stopped early
+                    # Pad the dataframe horizontally to iteration 50 if it stopped early
                     if last_iter < target_max_iter:
                         pad_iters = list(range(int(last_iter) + 1, target_max_iter + 1))
-                        pad_costs = [last_cost] * len(pad_iters)
-                        pad_df = pd.DataFrame({'Iteration': pad_iters, 'Cost': pad_costs})
+                        pad_df = pd.DataFrame({'Iteration': pad_iters, 'Cost': [last_cost] * len(pad_iters)})
                         df_hist = pd.concat([df_hist, pad_df], ignore_index=True)
 
                     plt.plot(
@@ -328,13 +312,13 @@ if __name__ == "__main__":
                     lines_plotted += 1
 
                 if lines_plotted > 0:
-                    plt.title(f'Algorithm Comparison: Cost Convergence - Pop {pop_size} (Round {target_round})',
-                              fontsize=14, fontweight='bold')
-                    plt.ylabel('Cost', fontsize=12) # Removed log10 from label unless you are strictly plotting log values
+                    plt.title(f'Algorithm Comparison: Cost Convergence - Pop {pop_size}', fontsize=14, fontweight='bold')
+                    plt.ylabel('Cost', fontsize=12)
                     plt.xlabel('Iteration', fontsize=12)
-                    
-                    # Force the x-axis to be consistent across all graphs
                     plt.xlim(0, target_max_iter) 
+                    
+                    if max_valid_cost > 0:
+                        plt.ylim(0, max_valid_cost * 1.05) # Add 5% padding above highest valid curve point
                     
                     plt.grid(True, which='both', linestyle=':', linewidth=0.7)
                     plt.legend(loc='upper right', fontsize=11)
@@ -348,14 +332,12 @@ if __name__ == "__main__":
             end_time_sec = time.time()
             end_datetime = datetime.now()
             elapsed_seconds = end_time_sec - start_time_sec
-
             m, s = divmod(elapsed_seconds, 60)
             h, m = divmod(m, 60)
             elapsed_formatted = f"{int(h):02d}:{int(m):02d}:{s:05.2f}"
 
             print(f"\n--- SWEEP FINISHED: {end_datetime.strftime('%Y-%m-%d %H:%M:%S')} ---")
-            print(f"Time Elapsed (Current TF): {elapsed_formatted} ({elapsed_seconds:.2f} pure seconds)")
-
+            
             # Save Execution Timing
             total_timing_filename = os.path.join(BASE_OUTPUT_DIR, f"execution_timing_total_{timestamp_str}.csv")
             with open(total_timing_filename, mode='w', newline='') as file:
@@ -368,25 +350,19 @@ if __name__ == "__main__":
                     round(elapsed_seconds, 2)
                 ])
 
-            # Save Worker Timings
             worker_timing_filename = os.path.join(BASE_OUTPUT_DIR, f"execution_timing_workers_{timestamp_str}.csv")
             with open(worker_timing_filename, mode='w', newline='') as file:
                 writer = csv.writer(file)
                 writer.writerow(["Algorithm", "Population Size", "Elapsed Time (HH:MM:SS)", "Elapsed Time (Seconds)"])
-
-                sorted_results = sorted(raw_results, key=lambda x: (x['algo'], x['pop_size']))
-                for res in sorted_results:
+                for res in sorted(raw_results, key=lambda x: (x['algo'], x['pop_size'])):
                     w_sec = res['elapsed_time']
                     wm, ws = divmod(w_sec, 60)
                     wh, wm = divmod(wm, 60)
                     w_formatted = f"{int(wh):02d}:{int(wm):02d}:{ws:05.2f}"
                     writer.writerow([res['algo'], res['pop_size'], w_formatted, round(w_sec, 2)])
 
-    # Final overall execution log
     global_elapsed = time.time() - total_global_start_time
     gm, gs = divmod(global_elapsed, 60)
     gh, gm = divmod(gm, 60)
-    print(f"\n{'='*60}")
-    print(f"ALL TRANSFER FUNCTIONS PROCESSED.")
-    print(f"Total Global Execution Time: {int(gh):02d}:{int(gm):02d}:{gs:05.2f}")
-    print(f"{'='*60}\n")
+    print(f"\n{'='*60}\nALL TRANSFER FUNCTIONS PROCESSED.")
+    print(f"Total Global Execution Time: {int(gh):02d}:{int(gm):02d}:{gs:05.2f}\n{'='*60}\n")

@@ -30,23 +30,12 @@ function dde_system(du, u, h, p, t)
          past_setpoint = 0.0
     end
 
-    # Calculate raw control signal
     u_raw = Kp_c * (past_setpoint - past_y) + Ki_c * past_int_e
-    
-    # Time-Proportional Relay Clamp (0 to 1 limit)
     u_delayed = clamp(u_raw, 0.0, 1.0)
-
-    # Plant dynamics
     du[1] = (K_p * u_delayed - y) / T_p
-
-    # Integral of error
     e = 1.0 - y
     du[2] = e
-
-    # IAE: Error
     du[3] = abs(e)
-
-    # IAE: Control Effort
     du[4] = u_delayed^2
 end
 
@@ -101,27 +90,22 @@ def fast_fbest_diffeq(Kp_ctrl, Ki_ctrl, K_plant, T_plant, delay, avg_rise_time):
     else:
         rise_time = T_sim * 10 
 
-    # --- NORMALIZED CALCULATIONS ---
     norm_error = int_error / T_sim
     norm_effort = int_control / T_sim
     peak_y = np.max(y_vals)
     norm_overshoot = max(0.0, peak_y - 1.0) / 0.2
     norm_rise_time = rise_time / avg_rise_time
 
-    # --- AUTOMATIC FAILURE CONDITION ---
     if norm_error > 1.0 or norm_effort > 1.0 or norm_overshoot > 1.0 or norm_rise_time > 1.0:
         return penalty
         
     if np.max(y_vals) > 1.3 or np.min(y_vals) < -0.1:
         return penalty
 
-    # Returns the unsummed raw normalized metrics
     return (norm_error, norm_effort, norm_overshoot, norm_rise_time)
-
 
 # --- WARM-UP ---
 _ = fast_fbest_diffeq(0.1, 0.01, 1.0, 10.0, 1.0, 5.0)
-
 
 # ==========================================
 # --- SINGLE OBJECTIVE OPTIMIZER BASE ---
@@ -130,15 +114,11 @@ _ = fast_fbest_diffeq(0.1, 0.01, 1.0, 10.0, 1.0, 5.0)
 class EvolutionaryOptimizer(ABC):
     def __init__(self, config, tf_params):
         self.algo_name = self.__class__.__name__.replace('Optimizer', '')
-
-        # Standard Configs
         self.pop_size = config.get('population_size', 100)
         self.patience = config.get('patience_limit', 25)
         self.max_iters = config.get('max_iters', 200)
         self.tol = config.get('improvement_tol', 1e-4)
         self.n_rounds = config.get('n_rounds', 5)
-        
-        # New: List of Weights for [Error, Effort, Overshoot, RiseTime]
         self.weights = config.get('weights', [1.0, 1.0, 1.0, 1.0])
 
         folder_name = config.get('output_folder', f"experiment_images_{self.algo_name.lower()}")
@@ -158,7 +138,6 @@ class EvolutionaryOptimizer(ABC):
         self.memo_cache = {}
 
     def calculate_cost(self, Kp, Ki):
-        """Returns the unsummed 4-tuple of raw parameters."""
         if (self.is_reverse_acting and Kp > 0) or (not self.is_reverse_acting and Kp < 0):
             return (1e9, 1e9, 1e9, 1e9)
 
@@ -200,18 +179,18 @@ class EvolutionaryOptimizer(ABC):
         plt.figure(figsize=(10, 6))
         plt.plot(T_best, y_best, linewidth=2, color='#1f77b4', label=f'Best (Kp={best_Kp:.3f}, Ki={best_Ki:.3f})')
         plt.axhline(1.0, color='red', linestyle='--', linewidth=2, label='Target (1.0)')
-        plt.title(f'Best Step Response - Round {round_num} (Cost: {best_cost:.4f})', fontsize=14, fontweight='bold')
+        plt.title(f'Final Best Step Response (Cost: {best_cost:.4f})', fontsize=14, fontweight='bold')
         plt.ylabel('Process Output (y)')
         plt.xlabel('Time (s)')
         plt.grid(True, linestyle=':', linewidth=0.7)
         plt.legend(loc='lower right')
         plt.ylim(bottom=0)
         plt.tight_layout()
-        plt.savefig(self.output_dir / f'response_round_{round_num:03d}.png', dpi=300)
+        plt.savefig(self.output_dir / f'final_response_round_{round_num:03d}.png', dpi=300)
         plt.close()
 
     def run_experiment(self):
-        csv_file = self.output_dir / f"{self.output_dir.name}_log.csv"
+        csv_file = self.output_dir / f"{self.output_dir.name}_detailed_log.csv"
 
         if not csv_file.exists():
             with open(csv_file, mode='w', newline='') as file:
@@ -222,10 +201,8 @@ class EvolutionaryOptimizer(ABC):
 
         costs_log = []
         for current_round in range(1, self.n_rounds + 1):
-            # optimize_round now returns the single best solution
-            best_sol, iterations = self.optimize_round(current_round)
+            best_sol, iterations, cost_history = self.optimize_round(current_round)
             Kp, Ki, total_cost, raw_costs = best_sol
-
             costs_log.append(total_cost)
 
             with open(csv_file, mode='a', newline='') as file:
@@ -234,8 +211,18 @@ class EvolutionaryOptimizer(ABC):
                     current_round, iterations, total_cost, Kp, Ki, 
                     raw_costs[0], raw_costs[1], raw_costs[2], raw_costs[3]
                 ])
+                
+            # --- MODIFICATION: Only save step response on the LAST round ---
+            if current_round == self.n_rounds:
+                self.save_plot(current_round, Kp, Ki, total_cost)
 
-            self.save_plot(current_round, Kp, Ki, total_cost)
+            # --- MODIFICATION: Write raw historical iteration performance for charting ---
+            history_file = self.output_dir / f"raw_cost_history_round_{current_round:03d}.csv"
+            with open(history_file, mode='w', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow(['Iteration', 'Cost'])
+                for idx, c in enumerate(cost_history):
+                    writer.writerow([idx + 1, c])
 
         print(f"--- {self.algo_name} FINISHED --- Average Best Cost: {np.mean(costs_log):.4f}")
 

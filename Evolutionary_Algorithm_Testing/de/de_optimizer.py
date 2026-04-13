@@ -14,16 +14,13 @@ class DEOptimizer(EvolutionaryOptimizer):
 
         def scalar_cost_wrapper(x):
             Kp, Ki = x[0], x[1]
-            # Fetch unsummed parameters
             raw_costs = self.calculate_cost(Kp, Ki)
             
             if raw_costs[0] >= 1e8:
                 return 1e9
 
-            # Apply weights and sum
             weighted_cost = sum(w * c for w, c in zip(self.weights, raw_costs))
         
-            # Track best manually for logging purposes
             if weighted_cost < best_sol_tracker['cost']:
                 best_sol_tracker['cost'] = weighted_cost
                 best_sol_tracker['x'] = (Kp, Ki)
@@ -31,13 +28,13 @@ class DEOptimizer(EvolutionaryOptimizer):
 
             return weighted_cost
 
-        # Tracker for Patience Early Stopping
         class Tracker:
             def __init__(self, patience, tol):
                 self.patience = patience
                 self.tol = tol
                 self.counter = 0
                 self.best_cost = float('inf')
+                self.history = []
 
             def callback(self, xk, convergence=None):
                 cost = scalar_cost_wrapper(xk)
@@ -47,6 +44,9 @@ class DEOptimizer(EvolutionaryOptimizer):
                         self.counter = 0
                     else:
                         self.counter += 1
+                
+                # Append iteration cost, falling back to 1e9 if infinite
+                self.history.append(self.best_cost if self.best_cost < 1e8 else 1e9)
                 if self.counter >= self.patience:
                     return True
 
@@ -71,4 +71,4 @@ class DEOptimizer(EvolutionaryOptimizer):
         )
 
         final_Kp, final_Ki = best_sol_tracker['x']
-        return (final_Kp, final_Ki, best_sol_tracker['cost'], best_sol_tracker['raw']), result.nit
+        return (final_Kp, final_Ki, best_sol_tracker['cost'], best_sol_tracker['raw']), result.nit, tracker.history

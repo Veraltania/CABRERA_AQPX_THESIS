@@ -19,9 +19,8 @@ class GAOptimizer(EvolutionaryOptimizer):
             raw_costs = self.calculate_cost(Kp, Ki)
             
             if raw_costs[0] >= 1e8:
-                return -1e9  # Penalty (PyGAD maximizes)
+                return -1e9 
 
-            # Apply weights and sum
             weighted_cost = sum(w * c for w, c in zip(self.weights, raw_costs))
 
             if weighted_cost < best_sol_tracker['cost']:
@@ -29,7 +28,6 @@ class GAOptimizer(EvolutionaryOptimizer):
                 best_sol_tracker['x'] = (Kp, Ki)
                 best_sol_tracker['raw'] = raw_costs
 
-            # Inverse for maximization
             return 1.0 / (weighted_cost + 1e-6)
 
         class Tracker:
@@ -38,6 +36,7 @@ class GAOptimizer(EvolutionaryOptimizer):
                 self.tol = tol
                 self.counter = 0
                 self.best_fitness = -float('inf')
+                self.history = []
 
             def callback(self, ga_instance):
                 best_fitness = ga_instance.best_solution()[1]
@@ -46,6 +45,12 @@ class GAOptimizer(EvolutionaryOptimizer):
                     self.counter = 0
                 else:
                     self.counter += 1
+                
+                # Convert fitness back to cost for graphing
+                if self.best_fitness <= 0:
+                    self.history.append(1e9)
+                else:
+                    self.history.append((1.0 / self.best_fitness) - 1e-6)
 
                 if self.counter >= self.patience:
                     return "stop"
@@ -75,6 +80,5 @@ class GAOptimizer(EvolutionaryOptimizer):
 
         ga_instance.run()
         iterations_run = ga_instance.generations_completed
-
         final_Kp, final_Ki = best_sol_tracker['x']
-        return (final_Kp, final_Ki, best_sol_tracker['cost'], best_sol_tracker['raw']), iterations_run
+        return (final_Kp, final_Ki, best_sol_tracker['cost'], best_sol_tracker['raw']), iterations_run, tracker.history
