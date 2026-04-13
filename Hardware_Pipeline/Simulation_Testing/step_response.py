@@ -177,13 +177,13 @@ def main():
         },
         {
             "name": "Low-Effort", 
-            "weights": (0.5, 2.5, 0.5, 0.5), 
+            "weights": (0.33, 3, 0.33, 0.33), 
             "color": "green",
             "bounds": {"min_kp": min_kp, "max_kp": max_kp, "min_ki": min_ki, "max_ki": max_ki} 
         },
         {
             "name": "Aggressive", 
-            "weights": (3.5, 0.1, 0.1, 3.5), 
+            "weights": (10.5, 0.1, 0.1, 10.5), 
             "color": "magenta",
             "bounds": {"min_kp": min_kp, "max_kp": max_kp, "min_ki": min_ki, "max_ki": max_ki}
         }
