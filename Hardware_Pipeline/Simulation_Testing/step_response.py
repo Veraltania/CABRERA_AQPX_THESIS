@@ -166,41 +166,35 @@ def main():
     min_kp = 0
     max_ki = 0.05
     min_ki = 0.0001
-    # 3. Define Tuners [Error, Control Effort, Overshoot, Rise Time]
-    # Add your specific min/max bounds directly to the configuration dictionary
-    tuner_configs = [
+    
+    # 2a. Define DE Tuners [Error, Control Effort, Overshoot, Rise Time]
+    de_tuner_configs = [
         {
-            "name": "Baseline", 
-            "weights": (1.0, 1.0, 1.0, 1.0), 
+            "name": "DE Baseline", 
+            "weights": (1.0, 10.0, 1.0, 1.0), 
             "color": "blue",
             "bounds": {"min_kp": min_kp, "max_kp": max_kp, "min_ki": min_ki, "max_ki": max_ki}
         },
+    ]
+
+    # 2b. Define Hardcoded / External Tuners (MATLAB, Lambda, etc.)
+    manual_configs = [
         {
-            "name": "Low-Effort", 
-            "weights": (0.33, 3, 0.33, 0.33), 
-            "color": "green",
-            "bounds": {"min_kp": min_kp, "max_kp": max_kp, "min_ki": min_ki, "max_ki": max_ki} 
-        },
-        {
-            "name": "Aggressive", 
-            "weights": (10.5, 0.1, 0.1, 10.5), 
-            "color": "magenta",
-            "bounds": {"min_kp": min_kp, "max_kp": max_kp, "min_ki": min_ki, "max_ki": max_ki}
+            "name": "Lambda Tuning", 
+            "kp": 0.41,   # Replace with your Lambda Kp
+            "ki": 0.0029,  # Replace with your Lambda Ki
+            "color": "cyan"
         }
     ]
 
     results = []
 
-    # 4. Tune and Simulate
-    for cfg in tuner_configs:
-        # Extract bounds safely (defaults to empty dict if omitted from config)
+    # 3a. Tune and Simulate DE Configurations
+    for cfg in de_tuner_configs:
         bounds = cfg.get("bounds", {})
-        
-        # Unpack the bounds kwargs directly into the tuner
         kp, ki = run_de_tuner(cfg["name"], plant_tf, cfg["weights"], **bounds)
         
         controller = PIController(kp=kp, ki=ki, dt=dt_step)
-        
         t, y, u, sp = Simulator.run(plant_tf, controller, sequence=test_sequence, dt=dt_step)
         
         results.append({
@@ -208,14 +202,29 @@ def main():
             "t": t, "y": y, "u": u, "sp": sp, "kp": kp, "ki": ki
         })
 
-    # 5. Plotting (Unchanged)
+    # 3b. Simulate Hardcoded / Manual Configurations
+    print("\n[Simulator] Running Manual/External Configurations...")
+    for cfg in manual_configs:
+        kp, ki = cfg["kp"], cfg["ki"]
+        
+        controller = PIController(kp=kp, ki=ki, dt=dt_step)
+        t, y, u, sp = Simulator.run(plant_tf, controller, sequence=test_sequence, dt=dt_step)
+        
+        print(f"[Result] {cfg['name']} -> Simulated with Kp: {kp:.4f}, Ki: {ki:.4f}")
+        results.append({
+            "name": cfg["name"], "color": cfg["color"],
+            "t": t, "y": y, "u": u, "sp": sp, "kp": kp, "ki": ki
+        })
+
+    # 4. Plotting
     print("\n--- Generating Plots ---")
     
-    plt.figure(figsize=(10, 6))
-    plt.plot(results[0]["t"], results[0]["sp"], color='black', linewidth=1.5, label='Reference Setpoint')
+    # Plot 1: Step Response Comparison
+    plt.figure(figsize=(12, 7))
+    plt.plot(results[0]["t"], results[0]["sp"], color='black', linewidth=1.5, label='Reference Setpoint', linestyle='--')
     
     for res in results:
-        label = f'DE {res["name"]} (Kp:{res["kp"]:.2f}, Ki:{res["ki"]:.4f})'
+        label = f'{res["name"]} (Kp:{res["kp"]:.2f}, Ki:{res["ki"]:.4f})'
         plt.plot(res["t"], res["y"], color=res["color"], linewidth=1.5, label=label)
 
     plt.title('Dissolved Oxygen Step Response Comparison')
@@ -229,7 +238,8 @@ def main():
     plt.savefig(os.path.join(output_dir, "step_response_comparison.png"), dpi=300)
     plt.close()
 
-    plt.figure(figsize=(10, 6))
+    # Plot 2: Control Effort Comparison
+    plt.figure(figsize=(12, 7))
     for res in results:
         auc = np.trapezoid(res["u"], res["t"])
         plt.plot(res["t"], res["u"], color=res["color"], linewidth=1.2, alpha=0.8, 
