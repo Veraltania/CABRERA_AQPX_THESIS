@@ -171,7 +171,7 @@ def generate_scatterplot(df, x_col, y_col, category, is_average, output_dir):
 if __name__ == "__main__":
     # Define directories
     script_dir = Path(__file__).parent.resolve()
-    batch_dir = script_dir / "BATCH_OPENLOOP"
+    batch_dir = script_dir / "BATCH_OPENLOOP_CONTROL_EFFORT_1X"
 
     if not batch_dir.exists():
         print(f"\n[SKIP] Directory not found: {batch_dir}")

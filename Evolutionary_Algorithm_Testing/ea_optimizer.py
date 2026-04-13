@@ -125,7 +125,6 @@ class EvolutionaryOptimizer(ABC):
         self.tol = config.get('improvement_tol', 1e-4)
         self.n_rounds = config.get('n_rounds', 5)
         self.weights = config.get('weights', [1.0, 1.0, 1.0, 1.0])
-        print(self.weights)
 
         folder_name = config.get('output_folder', f"experiment_images_{self.algo_name.lower()}")
         self.output_dir = Path(folder_name)

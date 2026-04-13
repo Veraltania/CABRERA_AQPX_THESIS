@@ -184,20 +184,20 @@ if __name__ == "__main__":
     pop_sizes = list(range(START_POP, END_POP + 1, STEP_SIZE))
     if pop_sizes[-1] != END_POP: pop_sizes.append(END_POP)
 
-    batch_dir = "BATCH_OPENLOOP"
+    batch_dir = "BATCH_OPENLOOP_CONTROL_EFFORT_1X"
     sweep_type = "population_sweep"
 
     # --- DEFINING TRANSFER FUNCTIONS WITH SPECIFIC Kp & Ki BOUNDS ---
     max_kp_do = 1.5
     min_kp_do = 0
-    max_ki_do = 0.001
+    max_ki_do = 0.005
     min_ki_do = 0
 
     # Adjusted limits for massive Tp (71,160s) to prevent integral windup
     max_kp_tds = 0 
     min_kp_tds = -1
-    max_ki_tds = 1e-4
-    min_ki_tds = 1e-7 # Dropped from -0.05 to give the solver a chance
+    max_ki_tds = 0
+    min_ki_tds = -0.0005 
 
     transfer_functions = {
         f"{sweep_type}_do_feb5_daytime": {
