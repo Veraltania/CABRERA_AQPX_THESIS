@@ -11,7 +11,7 @@ if __name__ == "__main__":
 
     SCRIPT_DIR = os.path.dirname(os.path.abspath(sys.argv[0]))
 
-    sweep_type = "pso_sweep_phi"
+    sweep_type = "pso_sweep_weight"
 
     # --- DEFINING TRANSFER FUNCTIONS WITH SPECIFIC Kp & Ki BOUNDS ---
     max_kp_do = 3.0
@@ -93,8 +93,8 @@ if __name__ == "__main__":
     }
 
     pso_sweep_config = {
-        'label': 'Phi',
-        'keys': ['phi1', 'phi2'],
+        'label': 'Weight',
+        'keys': ['w'],
         'values': np.linspace(SWEEP_START, SWEEP_END, SWEEP_BINS),
         'pop_sizes': [50]
     }
@@ -104,6 +104,6 @@ if __name__ == "__main__":
         sweep_config=pso_sweep_config,
         transfer_functions=transfer_functions,
         base_config=base_config,
-        output_dir=os.path.join(SCRIPT_DIR, "PSO_SWEEP_PHI")
+        output_dir=os.path.join(SCRIPT_DIR, "PSO_SWEEP_WEIGHT")
     )
     pso_sweeper.run_sweep()
