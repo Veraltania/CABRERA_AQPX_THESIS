@@ -5,13 +5,16 @@ from pso_optimizer import PSOOptimizer
 import sys
 
 if __name__ == "__main__":
-    SWEEP_START = 2.0
-    SWEEP_END = 12.0
+    SWEEP_START = 0
+    SWEEP_END = 1.0
     SWEEP_BINS = 11
 
     SCRIPT_DIR = os.path.dirname(os.path.abspath(sys.argv[0]))
 
-    sweep_type = "pso_sweep_weight"
+    sweep_type = "pso_sweep_vmax"
+    label = "Maximum Velocity"
+    keys = ['v_max']
+    folder_name = "PSO_SWEEP_VMAX"
 
     # --- DEFINING TRANSFER FUNCTIONS WITH SPECIFIC Kp & Ki BOUNDS ---
     max_kp_do = 3.0
@@ -93,8 +96,8 @@ if __name__ == "__main__":
     }
 
     pso_sweep_config = {
-        'label': 'Weight',
-        'keys': ['w'],
+        'label': label,
+        'keys': keys,
         'values': np.linspace(SWEEP_START, SWEEP_END, SWEEP_BINS),
         'pop_sizes': [50]
     }
@@ -104,6 +107,6 @@ if __name__ == "__main__":
         sweep_config=pso_sweep_config,
         transfer_functions=transfer_functions,
         base_config=base_config,
-        output_dir=os.path.join(SCRIPT_DIR, "PSO_SWEEP_WEIGHT")
+        output_dir=os.path.join(SCRIPT_DIR, folder_name)
     )
     pso_sweeper.run_sweep()
