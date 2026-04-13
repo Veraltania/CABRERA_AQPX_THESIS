@@ -67,10 +67,10 @@ if __name__ == '__main__':
     }
 
     # --- 3. SWEEP CONFIGURATION ---
-    # Mutation for DE typically ranges from 0 to 2. Sweeping from 0.1 to 1.5 covers standard use cases.
+    # Mutation for DE typically ranges from 0 to 2. 
     start_value = 0.1
-    end_value = 1.5
-    num_bins = 15
+    end_value = 2.0
+    num_bins = 20
     
     dynamic_values = np.linspace(start_value, end_value, num_bins).tolist()
     
