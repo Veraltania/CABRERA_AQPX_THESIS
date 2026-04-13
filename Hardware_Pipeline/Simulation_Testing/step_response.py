@@ -127,6 +127,7 @@ def run_de_tuner(name, tf_config, weights, min_kp=0.001, max_kp=20.0, min_ki=1e-
     }
     
     config = {
+        'population_size': 1000,
         'patience_limit': 20, 
         'improvement_tol': 1e-4, 
         'mutation': (0.5, 1.0), 
@@ -156,22 +157,22 @@ def main():
     test_sequence = StepSequence(
         base_sp=0.0,             
         step_sp=1.0,             
-        pre_step_delay=15000,     
-        step_duration=15000,      
-        recovery_duration=15000,  
+        pre_step_delay=10000,     
+        step_duration=10000,      
+        recovery_duration=10000,  
         cycles=2                 
     )
 
-    max_kp = 3
+    max_kp = 1.5
     min_kp = 0
-    max_ki = 0.05
-    min_ki = 0.0001
+    max_ki = 0.002
+    min_ki = 0
     
     # 2a. Define DE Tuners [Error, Control Effort, Overshoot, Rise Time]
     de_tuner_configs = [
         {
             "name": "DE Baseline", 
-            "weights": (1.0, 10.0, 1.0, 1.0), 
+            "weights": (1.0, 1.0, 1.0, 1.0), 
             "color": "blue",
             "bounds": {"min_kp": min_kp, "max_kp": max_kp, "min_ki": min_ki, "max_ki": max_ki}
         },
@@ -182,7 +183,7 @@ def main():
         {
             "name": "Lambda Tuning", 
             "kp": 0.41,   # Replace with your Lambda Kp
-            "ki": 0.0029,  # Replace with your Lambda Ki
+            "ki": 0.000136,  # Replace with your Lambda Ki
             "color": "cyan"
         }
     ]

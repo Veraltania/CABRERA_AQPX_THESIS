@@ -188,16 +188,16 @@ if __name__ == "__main__":
     sweep_type = "population_sweep"
 
     # --- DEFINING TRANSFER FUNCTIONS WITH SPECIFIC Kp & Ki BOUNDS ---
-    max_kp_do = 3.0
+    max_kp_do = 1.5
     min_kp_do = 0
-    max_ki_do = 0.05
+    max_ki_do = 0.001
     min_ki_do = 0
 
     # Adjusted limits for massive Tp (71,160s) to prevent integral windup
     max_kp_tds = 0 
-    min_kp_tds = -1.5
-    max_ki_tds = 0
-    min_ki_tds = -0.0005 # Dropped from -0.05 to give the solver a chance
+    min_kp_tds = -1
+    max_ki_tds = 1e-4
+    min_ki_tds = 1e-7 # Dropped from -0.05 to give the solver a chance
 
     transfer_functions = {
         f"{sweep_type}_do_feb5_daytime": {
