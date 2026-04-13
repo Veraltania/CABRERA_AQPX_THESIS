@@ -1,7 +1,0 @@
---- PSO EXPERIMENT SUMMARY ---
-Total Rounds: 50
-Average Iterations: 68.1
-Average Cost:  828.68
------------------------------
-Kp: 9.78451 (+/- 0.13638)
-Ki: 0.002823 (+/- 0.000046)
