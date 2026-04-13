@@ -157,7 +157,7 @@ if __name__ == "__main__":
         "tol": 0.01,
         "improvement_tol": 0.01,
         "n_rounds": 50,
-        "weights": [0.66, 2.0, 0.66, 0.66]
+        "weights": [1.0, 1.0, 1.0, 1.0]
     }
 
     algo_specific_configs = {
@@ -184,7 +184,7 @@ if __name__ == "__main__":
     pop_sizes = list(range(START_POP, END_POP + 1, STEP_SIZE))
     if pop_sizes[-1] != END_POP: pop_sizes.append(END_POP)
 
-    batch_dir = "BATCH_OPENLOOP_CONTROL_EFFORT_2X"
+    batch_dir = "BATCH_OPENLOOP"
     sweep_type = "population_sweep"
 
     # --- DEFINING TRANSFER FUNCTIONS WITH SPECIFIC Kp & Ki BOUNDS ---
