@@ -46,7 +46,6 @@ class GAOptimizer(EvolutionaryOptimizer):
                 else:
                     self.counter += 1
                 
-                # Convert fitness back to cost for graphing
                 if self.best_fitness <= 0:
                     self.history.append(1e9)
                 else:
@@ -56,12 +55,9 @@ class GAOptimizer(EvolutionaryOptimizer):
                     return "stop"
 
         tracker = Tracker(self.patience, self.tol)
-        safe_limit = float(self.max_kp) if self.max_kp is not None else (-2.0 if self.is_reverse_acting else 2.0)
-
-        if self.is_reverse_acting:
-            bounds = [{'low': safe_limit, 'high': -0.001}, {'low': -0.005, 'high': -1e-6}]
-        else:
-            bounds = [{'low': 0.001, 'high': safe_limit}, {'low': 1e-6, 'high': 0.005}]
+        
+        # Applying boundaries extracted from config in base class
+        bounds = [{'low': self.min_kp, 'high': self.max_kp}, {'low': self.min_ki, 'high': self.max_ki}]
 
         ga_instance = pygad.GA(
             num_generations=self.max_iters,
@@ -81,7 +77,6 @@ class GAOptimizer(EvolutionaryOptimizer):
         ga_instance.run()
         iterations_run = ga_instance.generations_completed
         
-        # --- NEW SAFETY CHECK ---
         if best_sol_tracker['x'] is None:
             final_Kp, final_Ki = 0.0, 0.0
             best_sol_tracker['cost'] = 1e9

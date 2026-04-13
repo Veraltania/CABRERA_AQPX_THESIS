@@ -113,6 +113,7 @@ _ = fast_fbest_diffeq(0.1, 0.01, 1.0, 10.0, 1.0, 5.0)
 
 class EvolutionaryOptimizer(ABC):
     def __init__(self, config, tf_params):
+        self.config = config
         self.algo_name = self.__class__.__name__.replace('Optimizer', '')
         self.pop_size = config.get('population_size', 100)
         self.patience = config.get('patience_limit', 25)
@@ -131,7 +132,21 @@ class EvolutionaryOptimizer(ABC):
         self.avg_rise_time = tf_params.get('avg_rise_time', self.T_plant * 2.2)
 
         self.is_reverse_acting = tf_params.get('is_reverse_acting', self.K_plant < 0)
-        self.max_kp = tf_params.get('max_kp', None)
+        
+        # --- Search Space Bounds ---
+        # Fetch overrides from config, falling back to dynamic defaults
+        default_safe_limit = float(tf_params.get('max_kp', -2.0 if self.is_reverse_acting else 2.0))
+        
+        if self.is_reverse_acting:
+            self.min_kp = config.get('min_kp', default_safe_limit)
+            self.max_kp = config.get('max_kp', -0.001)
+            self.min_ki = config.get('min_ki', -0.005)
+            self.max_ki = config.get('max_ki', -1e-6)
+        else:
+            self.min_kp = config.get('min_kp', 0.001)
+            self.max_kp = config.get('max_kp', default_safe_limit)
+            self.min_ki = config.get('min_ki', 1e-6)
+            self.max_ki = config.get('max_ki', 0.005)
 
         self._raw_tf_params = tf_params
         self._lazy_plant = None
@@ -212,11 +227,9 @@ class EvolutionaryOptimizer(ABC):
                     raw_costs[0], raw_costs[1], raw_costs[2], raw_costs[3]
                 ])
                 
-            # --- MODIFICATION: Only save step response on the LAST round ---
             if current_round == self.n_rounds:
                 self.save_plot(current_round, Kp, Ki, total_cost)
 
-            # --- MODIFICATION: Write raw historical iteration performance for charting ---
             history_file = self.output_dir / f"raw_cost_history_round_{current_round:03d}.csv"
             with open(history_file, mode='w', newline='') as f:
                 writer = csv.writer(f)

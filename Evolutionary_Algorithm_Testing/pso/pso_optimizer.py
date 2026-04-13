@@ -58,18 +58,10 @@ class PSOOptimizer(EvolutionaryOptimizer):
 
             return costs_array
 
-        safe_limit = float(self.max_kp) if self.max_kp is not None else (-2.0 if self.is_reverse_acting else 2.0)
-
-        if self.is_reverse_acting:
-            min_kp, max_kp = safe_limit, -0.005
-            min_ki, max_ki = -0.005, -0.0001
-        else:
-            min_kp, max_kp = 0.001, safe_limit
-            min_ki, max_ki = 0.0001, 0.005
-
+        # Applying boundaries extracted from config in base class
         bounds = (
-            np.array([min_kp, min_ki], dtype=np.float64),
-            np.array([max_kp, max_ki], dtype=np.float64)
+            np.array([self.min_kp, self.min_ki], dtype=np.float64),
+            np.array([self.max_kp, self.max_ki], dtype=np.float64)
         )
         velocity_clamp = (self.v_min, self.v_max)
         options = {'c1': self.c1, 'c2': self.c2, 'w': self.w}
@@ -88,7 +80,6 @@ class PSOOptimizer(EvolutionaryOptimizer):
         except EarlyStopping:
             iterations_run = len(run_state['history'])
 
-        # --- NEW SAFETY CHECK ---
         if best_sol_tracker['x'] is None:
             final_Kp, final_Ki = 0.0, 0.0
             best_sol_tracker['cost'] = 1e9

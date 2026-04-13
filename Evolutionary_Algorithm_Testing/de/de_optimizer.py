@@ -45,18 +45,14 @@ class DEOptimizer(EvolutionaryOptimizer):
                     else:
                         self.counter += 1
                 
-                # Append iteration cost, falling back to 1e9 if infinite
                 self.history.append(self.best_cost if self.best_cost < 1e8 else 1e9)
                 if self.counter >= self.patience:
                     return True
 
         tracker = Tracker(self.patience, self.tol)
-        safe_limit = float(self.max_kp) if self.max_kp is not None else (-2.0 if self.is_reverse_acting else 2.0)
-
-        if self.is_reverse_acting:
-            bounds = [(safe_limit, -0.001), (-0.005, -0.0001)]
-        else:
-            bounds = [(0.001, safe_limit), (0.0001, 0.005)]
+        
+        # Applying boundaries extracted from config in base class
+        bounds = [(self.min_kp, self.max_kp), (self.min_ki, self.max_ki)]
 
         result = differential_evolution(
             scalar_cost_wrapper,
