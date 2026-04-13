@@ -11,7 +11,7 @@ if __name__ == "__main__":
 
     SCRIPT_DIR = os.path.dirname(os.path.abspath(sys.argv[0]))
 
-    sweep_type = "population_sweep"
+    sweep_type = "pso_sweep_phi"
 
     # --- DEFINING TRANSFER FUNCTIONS WITH SPECIFIC Kp & Ki BOUNDS ---
     max_kp_do = 3.0
