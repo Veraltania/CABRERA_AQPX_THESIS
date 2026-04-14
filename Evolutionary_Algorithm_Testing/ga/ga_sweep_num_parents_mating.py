@@ -82,7 +82,7 @@ if __name__ == '__main__':
 
     start_value = 0.1
     end_value = 1.0
-    num_bins = 11
+    num_bins = 10
     
     dynamic_values = np.linspace(start_value, end_value, num_bins).tolist()
     print(f"Generated Sweep Values: {dynamic_values}")

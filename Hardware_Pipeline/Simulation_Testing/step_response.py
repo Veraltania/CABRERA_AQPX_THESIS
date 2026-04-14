@@ -13,7 +13,7 @@ from Evolutionary_Algorithm_Testing.de.de_optimizer import DEOptimizer
 # ==========================================
 class FOPDTPlant:
     """First-Order Plus Dead Time (FOPDT) Virtual Plant"""
-    def __init__(self, K, tau, delay, dt=1.0, initial_do=5.0, baseline_do=0.0):
+    def __init__(self, K, tau, delay, dt=1.0, initial_do=0.0, baseline_do=0.0):
         self.K = K
         self.tau = tau
         self.dt = dt
@@ -155,8 +155,8 @@ def main():
     dt_step = 1.0
 
     test_sequence = StepSequence(
-        base_sp=0.0,             
-        step_sp=1.0,             
+        base_sp=1.0,             
+        step_sp=2.0,             
         pre_step_delay=10000,     
         step_duration=10000,      
         recovery_duration=10000,  
@@ -172,7 +172,7 @@ def main():
     de_tuner_configs = [
         {
             "name": "DE Baseline", 
-            "weights": (1.0, 2.0, 0.0, 1.0), 
+            "weights": (0.0, 2.0, 0.0, 2.0), 
             "color": "blue",
             "bounds": {"min_kp": min_kp, "max_kp": max_kp, "min_ki": min_ki, "max_ki": max_ki}
         },
