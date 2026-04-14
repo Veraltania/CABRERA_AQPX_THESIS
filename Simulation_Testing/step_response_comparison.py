@@ -20,10 +20,6 @@ def create_fopdt_sys(K, tau, delay, pade_order=2):
         return ct.series(delay_tf, plant_linear)
     return plant_linear
 
-def create_pi_controller(kp, ki):
-    """Creates a PI Controller Transfer Function: (kp*s + ki) / s"""
-    return ct.tf([kp, ki], [1, 0])
-
 def generate_setpoint_array(t, sequence_config):
     """Generates the reference signal array for the simulation time vector."""
     base_sp = sequence_config['base_sp']
@@ -42,7 +38,53 @@ def generate_setpoint_array(t, sequence_config):
     return ref
 
 # ==========================================
-# 2. METRIC HELPERS (For the Graph Output Tables)
+# 2. DISCRETE SIMULATION WITH SATURATION
+# ==========================================
+
+def simulate_saturated_pi(plant, kp, ki, t_eval, setpoints, u_min=0.0, u_max=1.0):
+    """
+    Simulates the closed loop response step-by-step, explicitly clamping 
+    the control effort (u) to [u_min, u_max] to model physical actuators like pumps/aerators.
+    """
+    dt = t_eval[1] - t_eval[0]
+    
+    sys_d_tf = ct.c2d(plant, dt)
+    sys_d_ss = ct.ss(sys_d_tf)  # <--- Fix: Convert to State-Space to get A, B, C, D matrices
+    A, B, C, D = sys_d_ss.A, sys_d_ss.B, sys_d_ss.C, sys_d_ss.D
+    
+    n_steps = len(t_eval)
+    y_out = np.zeros(n_steps)
+    u_out = np.zeros(n_steps)
+    
+    x = np.zeros((sys_d_ss.nstates, 1))
+    integral_error = 0.0
+    
+    for i in range(n_steps):
+        sp = setpoints[i]
+        
+        current_y = (C @ x)[0, 0]
+        y_out[i] = current_y
+        
+        error = sp - current_y
+        integral_error += error * dt
+        
+        u_raw = (kp * error) + (ki * integral_error)
+        
+        # Actuator Saturation
+        u_clamped = np.clip(u_raw, u_min, u_max)
+        u_out[i] = u_clamped
+        
+        # Anti-windup
+        if u_raw != u_clamped and ki != 0:
+            integral_error -= error * dt 
+            
+        if i < n_steps - 1:
+            x = A @ x + B * u_clamped
+            
+    return y_out, u_out
+
+# ==========================================
+# 3. METRIC HELPERS
 # ==========================================
 
 def calculate_rise_time(t, y, sp, base_sp, step_sp):
@@ -91,68 +133,59 @@ def calculate_overshoot(y, sp, base_sp, step_sp):
     return max(0, max_os)
 
 # ==========================================
-# 3. SCIPY DE TUNER WITH NATIVE COST FUNCTION
+# 4. SCIPY DE TUNER (UPDATED FOR DIRECTION)
 # ==========================================
 
-def run_scipy_de_tuner(name, plant, min_kp, max_kp, min_ki, max_ki, tau, delay, weights):
-    """Uses SciPy's DE applying the exact cost function logic from ea_optimizer.py"""
+def run_scipy_de_tuner(name, plant, min_kp, max_kp, min_ki, max_ki, tau, delay, weights, target_sp=1.0):
+    """Uses SciPy's DE applying the realistic saturated simulation"""
     print(f"\n[Auto-Tuner] Running SciPy DE Optimization: {name}")
     
-    # Match T_plant * 3 + delay simulation boundary from ea_optimizer.py
     T_sim = (tau * 3) + delay
     t_opt = np.linspace(0, T_sim, 1000)
-    sp_opt = np.ones_like(t_opt) # Step from 0 to 1
+    sp_opt = np.full_like(t_opt, target_sp) 
     
     avg_rise_time = tau * 2.2
     w_iae, w_effort, w_os, w_rt = weights
 
     def objective(params):
         kp, ki = params
-        controller = create_pi_controller(kp, ki)
-        
-        # Closed-loop systems
-        T_y = ct.feedback(ct.series(controller, plant), 1)
-        T_u = ct.feedback(controller, plant)
-        
         penalty = 1e9
         
         try:
-            # Simulate
-            _, y_out = ct.forced_response(T_y, t_opt, sp_opt)
-            _, u_out = ct.forced_response(T_u, t_opt, sp_opt)
+            y_out, u_out = simulate_saturated_pi(plant, kp, ki, t_opt, sp_opt, u_min=0.0, u_max=1.0)
             
-            if np.any(np.isnan(y_out)) or np.any(np.isinf(y_out)):
+            # Normalize y_out so the math evaluates exactly the same whether target is +1 or -1
+            y_norm = y_out * np.sign(target_sp)
+            
+            if np.any(np.isnan(y_norm)) or np.any(np.isinf(y_norm)):
                 return penalty
                 
-            # --- EA OPTIMIZER COST FUNCTION REPLICATION ---
-            error = 1.0 - y_out
+            error = 1.0 - y_norm
             int_error = np.trapezoid(np.abs(error), t_opt)
+            int_control = np.trapezoid(u_out**2, t_opt)
             
-            # Note u^2 from ea_optimizer.py 
-            u_delayed = np.clip(u_out, -1.0, 1.0)
-            int_control = np.trapezoid(u_delayed**2, t_opt)
-            
-            # Rise time calculation exactly mirroring EA
-            crossings_10 = np.where(y_out >= 0.1)[0]
-            crossings_90 = np.where(y_out >= 0.9)[0]
+            # NEW: Calculate the Integral of Overshoot Area (matches the w4 piecewise logic)
+            # When error < 0, we are overshooting. Extract just the overshoot magnitude.
+            overshoot_array = np.where(error < 0, np.abs(error), 0.0)
+            int_overshoot = np.trapezoid(overshoot_array, t_opt)
+
+            crossings_10 = np.where(y_norm >= 0.1)[0]
+            crossings_90 = np.where(y_norm >= 0.9)[0]
             
             if len(crossings_10) > 0 and len(crossings_90) > 0:
                 rise_time = t_opt[crossings_90[0]] - t_opt[crossings_10[0]]
             else:
                 rise_time = T_sim * 10
                 
-            # Normalization blocks
             norm_error = int_error / T_sim
             norm_effort = int_control / T_sim
-            peak_y = np.max(y_out)
-            norm_overshoot = max(0.0, peak_y - 1.0) / 0.5
+            norm_overshoot = int_overshoot / T_sim
             norm_rise_time = rise_time / avg_rise_time
             
-            # Limit checks
             if norm_error > 1.0 or norm_effort > 1.0 or norm_overshoot > 1.0 or norm_rise_time > 1.0:
                 return penalty
                 
-            if np.max(y_out) > 1.3 or np.min(y_out) < -0.1:
+            if np.max(y_norm) > 1.3 or np.min(y_norm) < -0.1:
                 return penalty
                 
             cost = (w_iae * norm_error) + (w_effort * norm_effort) + (w_os * norm_overshoot) + (w_rt * norm_rise_time)
@@ -163,7 +196,6 @@ def run_scipy_de_tuner(name, plant, min_kp, max_kp, min_ki, max_ki, tau, delay, 
 
     bounds = [(min_kp, max_kp), (min_ki, max_ki)]
     
-    # SciPy Differential Evolution
     result = differential_evolution(
         objective, 
         bounds, 
@@ -181,36 +213,27 @@ def run_scipy_de_tuner(name, plant, min_kp, max_kp, min_ki, max_ki, tau, delay, 
     return best_kp, best_ki
 
 # ==========================================
-# 4. UTILITIES
-# ==========================================
-
-# ==========================================
-# 4. UTILITIES
+# 5. UTILITIES
 # ==========================================
 
 def safe_float(val):
-    """Safely converts string to float, handling fancy minus signs and empty cells."""
     if not val or str(val).strip() == '':
         return 0.0
-    # Replace en-dashes and unicode minus signs with standard ASCII hyphen-minus
     cleaned_val = str(val).replace('−', '-').replace('–', '-').replace(' ', '').strip()
     try:
         return float(cleaned_val)
     except ValueError:
-        print(f"[Warning] Could not parse '{val}' to float. Defaulting to 0.0")
         return 0.0
 
 def read_tf_parameters(filepath):
     tfs = []
-    with open(filepath, 'r', encoding='utf-8-sig') as f: # utf-8-sig handles potential BOM characters
+    with open(filepath, 'r', encoding='utf-8-sig') as f:
         reader = csv.reader(f)
-        next(reader) # Skip main headers
-        next(reader) # Skip sub headers
+        next(reader) 
+        next(reader) 
         for row in reader:
             if not row or not row[0].strip():
                 continue
-            
-            # Ensure row has enough columns to prevent index out of bounds
             row = row + [''] * (10 - len(row))
             
             tf_data = {
@@ -228,12 +251,7 @@ def read_tf_parameters(filepath):
 
 def write_formatted_table(output_path, metric_name, tfs, metrics_dict):
     headers = ['Gain'] + [tf['name'] for tf in tfs]
-    
-    tuners = [
-        'DE-tuned', 
-        'Lambda-tuned ($\\lambda$ = 3$\\tau$)', 
-        'MATLAB pidtune(), balanced'
-    ]
+    tuners = ['DE-tuned', 'Lambda-tuned ($\\lambda$ = 3$\\tau$)', 'MATLAB pidtune(), balanced']
     
     with open(output_path, 'w', newline='') as f:
         writer = csv.writer(f)
@@ -247,23 +265,18 @@ def write_formatted_table(output_path, metric_name, tfs, metrics_dict):
             writer.writerow(row)
 
 # ==========================================
-# 5. MAIN EXECUTION
+# 6. MAIN EXECUTION
 # ==========================================
 
 def main():
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    input_csv = os.path.join(base_dir, "tf_parameters.csv")
-    output_dir = os.path.join(base_dir, "simulation_graphs_comparison")
+    input_csv = os.path.join(base_dir, "tf_parameters_do.csv")
+    output_dir = os.path.join(base_dir, "simulation_graphs_comparison_do_4xcf")
     os.makedirs(output_dir, exist_ok=True)
     
-    aggregated_metrics = {
-        'IAE': {}, 'Control_Effort': {}, 'Rise_Time': {}, 'Overshoot': {}
-    }
-
+    aggregated_metrics = {'IAE': {}, 'Control_Effort': {}, 'Rise_Time': {}, 'Overshoot': {}}
     tf_list = read_tf_parameters(input_csv)
-    
-    # Match the default weights from ea_optimizer.py
-    de_weights = [1.0, 1.0, 1.0, 1.0]
+    de_weights = [0.0, 4.0, 0.0, 0.0]
 
     for tf_data in tf_list:
         tf_name = tf_data['name']
@@ -275,11 +288,13 @@ def main():
         plant_params = {'K': tf_data['K'], 'tau': tf_data['tau'], 'delay': tf_data['delay']} 
         plant = create_fopdt_sys(**plant_params)
         
-        # Simulation duration for final visualization graphs
+        # <--- FIX: Smart target generation based on Plant Direction
+        target_sp = 1.0 if plant_params['K'] > 0 else -1.0
+        
         time_factor = max(plant_params['tau'], 1000)
         seq_config = {
             'base_sp': 0.0, 
-            'step_sp': 1.0,
+            'step_sp': target_sp, # Used dynamically
             'pre_step_delay': max(time_factor, plant_params['delay']) * 2, 
             'step_duration': time_factor * 8,
             'recovery_duration': time_factor * 8, 
@@ -292,23 +307,19 @@ def main():
         t_eval_hours = t_eval / 3600.0  
         setpoints = generate_setpoint_array(t_eval, seq_config)
 
-        # Set search bounds based on process gain direction
         if plant_params['K'] < 0:
-            max_kp = 0 
-            min_kp = -1
-            max_ki = 0
-            min_ki = -0.0005 
+            max_kp, min_kp = 0, -1
+            max_ki, min_ki = 0, -0.0005 
         else:
-            max_kp = 1.5
-            min_kp = 0
-            max_ki = 0.005
-            min_ki = 0
+            max_kp, min_kp = 1.5, 0
+            max_ki, min_ki = 0.005, 0
 
-        # 1. Run Scipy DE Auto-tuner using Native Cost Logic
+        # Run Auto-Tuner passing the custom target step
         de_kp, de_ki = run_scipy_de_tuner(
             f"DE ({tf_name})", plant,
             min_kp, max_kp, min_ki, max_ki,
-            plant_params['tau'], plant_params['delay'], de_weights
+            plant_params['tau'], plant_params['delay'], de_weights,
+            target_sp=target_sp
         )
 
         configs = [
@@ -317,21 +328,17 @@ def main():
             {"name": "MATLAB pidtune(), balanced", "color": "blue", "kp": tf_data['matlab_kp'], "ki": tf_data['matlab_ki']}
         ]
 
-        plt.figure(figsize=(14, 8))
-        plt.plot(t_eval_hours, setpoints, 'k--', label='Reference Setpoint', alpha=0.6)
+        fig_y, ax_y = plt.subplots(figsize=(14, 8))
+        fig_u, ax_u = plt.subplots(figsize=(14, 8))
+
+        ax_y.plot(t_eval_hours, setpoints, 'k--', label='Reference Setpoint', alpha=0.6)
 
         for cfg in configs:
-            controller = create_pi_controller(cfg["kp"], cfg["ki"])
-            
-            T_y = ct.feedback(ct.series(controller, plant), 1)
-            T_u = ct.feedback(controller, plant)
-
-            _, y_out = ct.forced_response(T_y, t_eval, setpoints)
-            _, u_out = ct.forced_response(T_u, t_eval, setpoints)
+            y_out, u_out = simulate_saturated_pi(plant, cfg["kp"], cfg["ki"], t_eval, setpoints, u_min=0.0, u_max=1.0)
             
             error = setpoints - y_out
             iae = np.trapezoid(np.abs(error), t_eval)
-            u_auc = np.trapezoid(np.clip(u_out, -1, 1)**2, t_eval) 
+            u_auc = np.trapezoid(u_out**2, t_eval) 
             rt = calculate_rise_time(t_eval, y_out, setpoints, seq_config['base_sp'], seq_config['step_sp'])
             os_pct = calculate_overshoot(y_out, setpoints, seq_config['base_sp'], seq_config['step_sp'])
 
@@ -341,18 +348,27 @@ def main():
             aggregated_metrics['Rise_Time'][tf_name][tuner_key] = rt
             aggregated_metrics['Overshoot'][tf_name][tuner_key] = os_pct
 
-            plt.plot(t_eval_hours, y_out, color=cfg["color"], label=f'{cfg["name"]} (IAE: {iae:.0f})')
+            ax_y.plot(t_eval_hours, y_out, color=cfg["color"], label=f'{cfg["name"]} (IAE: {iae:.0f})')
+            ax_u.plot(t_eval_hours, u_out, color=cfg["color"], label=f'{cfg["name"]} (Effort AUC: {u_auc:.0f})')
             
-        plt.title(f'Step Response Comparison: {tf_name}', fontsize=22, pad=20)
-        plt.xlabel('Time (hours)', fontsize=18)
-        plt.ylabel('System Output', fontsize=18)
-        plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=2, fontsize=16, borderaxespad=0.)
-        plt.grid(True, alpha=0.3)
-        plt.tight_layout()
+        ax_y.set_title(f'Step Response Comparison', fontsize=22, pad=20)
+        ax_y.set_xlabel('Time (hours)', fontsize=18)
+        ax_y.set_ylabel('System Output', fontsize=18)
+        ax_y.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=2, fontsize=16, borderaxespad=0.)
+        ax_y.grid(True, alpha=0.3)
+        fig_y.tight_layout()
+        fig_y.savefig(os.path.join(output_dir, f"step_response_{tf_name}.png"))
+        plt.close(fig_y)
         
-        plot_path = os.path.join(output_dir, f"step_response_{tf_name}.png")
-        plt.savefig(plot_path)
-        plt.close() 
+        ax_u.set_title(f'Control Effort Comparison', fontsize=22, pad=20)
+        ax_u.set_xlabel('Time (hours)', fontsize=18)
+        ax_u.set_ylabel('Control Signal (u)', fontsize=18)
+        ax_u.set_ylim(-0.1, 1.1) 
+        ax_u.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=2, fontsize=16, borderaxespad=0.)
+        ax_u.grid(True, alpha=0.3)
+        fig_u.tight_layout()
+        fig_u.savefig(os.path.join(output_dir, f"control_effort_{tf_name}.png"))
+        plt.close(fig_u)
 
     print("\n--- Exporting Formatted Metric Tables ---")
     write_formatted_table(os.path.join(output_dir, "IAE_table.csv"), 'IAE', tf_list, aggregated_metrics['IAE'])
