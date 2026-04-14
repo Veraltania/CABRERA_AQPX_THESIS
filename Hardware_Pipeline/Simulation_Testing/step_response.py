@@ -172,7 +172,7 @@ def main():
     de_tuner_configs = [
         {
             "name": "DE Baseline", 
-            "weights": (1.0, 1.0, 1.0, 1.0), 
+            "weights": (1.0, 2.0, 0.0, 1.0), 
             "color": "blue",
             "bounds": {"min_kp": min_kp, "max_kp": max_kp, "min_ki": min_ki, "max_ki": max_ki}
         },
@@ -182,8 +182,8 @@ def main():
     manual_configs = [
         {
             "name": "Lambda Tuning", 
-            "kp": 0.41,   # Replace with your Lambda Kp
-            "ki": 0.000136,  # Replace with your Lambda Ki
+            "kp": 0.41,   
+            "ki": 0.000136,  
             "color": "cyan"
         }
     ]
