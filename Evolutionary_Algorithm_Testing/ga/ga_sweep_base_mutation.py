@@ -17,7 +17,6 @@ class BaseMutationSweepGAOptimizer(GAOptimizer):
         # Convert keep_elitism if it's a percentage
         raw_elitism = config.get('keep_elitism')
         if isinstance(raw_elitism, float) and 0.0 < raw_elitism <= 1.0:
-            # Calculate percentage, but ensure it's at least 1 so elitism isn't completely lost
             config['keep_elitism'] = max(1, int(raw_elitism * pop_size))
             
         # Initialize the parent class
@@ -42,14 +41,12 @@ class BaseMutationSweepGAOptimizer(GAOptimizer):
                 self.base_mutation = base_mutation
 
             def on_generation(self, ga_instance):
-                # Apply dynamic Mutation factor using the SWEPT base mutation
                 n = ga_instance.generations_completed
                 P = ga_instance.num_generations
                 
-                # Formula: Base - 0.01 * (n/P). Bounded at 0.0 to prevent negative probabilities crashing PyGAD
+                # Formula: Base - 0.01 * (n/P). Bounded at 0.0
                 ga_instance.mutation_probability = max(0.0, self.base_mutation - 0.01 * (n / P))
 
-                # Evaluate best solution
                 solution, _, _ = ga_instance.best_solution()
                 cost = self.cost_func(solution)
                 self.history.append(cost)
@@ -68,22 +65,10 @@ class BaseMutationSweepGAOptimizer(GAOptimizer):
             cost = cost_wrapper(solution)
             return float(1.0 / (cost + 1e-8))
 
-        # Pass our custom base_mutation into the new Tracker
         tracker = Tracker(self.patience, self.tol, cost_wrapper, self.base_mutation)
 
-        if self.max_kp is None:
-            safe_limit = -100.0 if self.is_reverse_acting else 100.0
-        else:
-            safe_limit = float(self.max_kp)
-
-        if self.is_reverse_acting:
-            min_kp, max_kp = safe_limit, -0.001
-            min_ki, max_ki = -0.01, -1e-6
-        else:
-            min_kp, max_kp = 0.001, safe_limit
-            min_ki, max_ki = 1e-6, 0.01
-
-        bounds = [{'low': min_kp, 'high': max_kp}, {'low': min_ki, 'high': max_ki}]
+        # Inherit boundaries dynamically from the base class
+        bounds = [{'low': self.min_kp, 'high': self.max_kp}, {'low': self.min_ki, 'high': self.max_ki}]
 
         ga_kwargs = {
             "num_generations": self.max_iters,
@@ -97,7 +82,7 @@ class BaseMutationSweepGAOptimizer(GAOptimizer):
             "crossover_type": self.crossover_type,
             "crossover_probability": self.crossover_probability,  
             "mutation_type": "random",  
-            "mutation_probability": self.base_mutation,  # Set initial Pm for Generation 0 based on sweep
+            "mutation_probability": self.base_mutation,  
             "on_generation": tracker.on_generation,
             "suppress_warnings": True
         }
@@ -115,55 +100,53 @@ if __name__ == '__main__':
     sweep_type = "ga_sweep_mutation"
     SCRIPT_DIR = os.path.dirname(os.path.abspath(sys.argv[0]))
 
-    # --- 2. TRANSFER FUNCTIONS ---
     transfer_functions = {
         f"{sweep_type}_do_feb5_daytime": {
-            'tf_num': [1.346], 'tf_den': [1551.955, 1], 'tf_delay': 0.0,
-            'tf_n_pade': 2, 'computed_delay': 0.05, 'is_reverse_acting': False, 'max_kp': 100.0
+            'tf_num': [1.346], 'tf_den': [1551.955, 1], 'tf_delay': 0.0, 'tf_n_pade': 2, 'computed_delay': 0.05, 
+            'is_reverse_acting': False, 'min_kp': 0.001, 'max_kp': 100.0, 'min_ki': 1e-6, 'max_ki': 0.05
         },
         f"{sweep_type}_do_feb7_daytime": {
-            'tf_num': [1.133], 'tf_den': [2833.82, 1], 'tf_delay': 0.0,
-            'tf_n_pade': 2, 'computed_delay': 0.05, 'is_reverse_acting': False, 'max_kp': 100.0
+            'tf_num': [1.133], 'tf_den': [2833.82, 1], 'tf_delay': 0.0, 'tf_n_pade': 2, 'computed_delay': 0.05, 
+            'is_reverse_acting': False, 'min_kp': 0.001, 'max_kp': 100.0, 'min_ki': 1e-6, 'max_ki': 0.05
         },
         f"{sweep_type}_do_feb25_daytime": {
-            'tf_num': [2.287], 'tf_den': [3010.296, 1], 'tf_delay': 0.0,
-            'tf_n_pade': 2, 'computed_delay': 0.05, 'is_reverse_acting': False, 'max_kp': 100.0
+            'tf_num': [2.287], 'tf_den': [3010.296, 1], 'tf_delay': 0.0, 'tf_n_pade': 2, 'computed_delay': 0.05, 
+            'is_reverse_acting': False, 'min_kp': 0.001, 'max_kp': 100.0, 'min_ki': 1e-6, 'max_ki': 0.05
         },
         f"{sweep_type}_do_feb26_daytime": {
-            'tf_num': [2.430], 'tf_den': [3492.589, 1], 'tf_delay': 0.0,
-            'tf_n_pade': 2, 'computed_delay': 0.05, 'is_reverse_acting': False, 'max_kp': 100.0
+            'tf_num': [2.430], 'tf_den': [3492.589, 1], 'tf_delay': 0.0, 'tf_n_pade': 2, 'computed_delay': 0.05, 
+            'is_reverse_acting': False, 'min_kp': 0.001, 'max_kp': 100.0, 'min_ki': 1e-6, 'max_ki': 0.05
         },
         f"{sweep_type}_do_feb5_nighttime": {
-            'tf_num': [2.355], 'tf_den': [3083.590, 1], 'tf_delay': 0.0,
-            'tf_n_pade': 2, 'computed_delay': 0.05, 'is_reverse_acting': False, 'max_kp': 100.0
+            'tf_num': [2.355], 'tf_den': [3083.590, 1], 'tf_delay': 0.0, 'tf_n_pade': 2, 'computed_delay': 0.05, 
+            'is_reverse_acting': False, 'min_kp': 0.001, 'max_kp': 100.0, 'min_ki': 1e-6, 'max_ki': 0.05
         },
         f"{sweep_type}_do_feb7_nighttime": {
-            'tf_num': [2.049], 'tf_den': [4499.996, 1], 'tf_delay': 0.0,
-            'tf_n_pade': 2, 'computed_delay': 0.05, 'is_reverse_acting': False, 'max_kp': 100.0
+            'tf_num': [2.049], 'tf_den': [4499.996, 1], 'tf_delay': 0.0, 'tf_n_pade': 2, 'computed_delay': 0.05, 
+            'is_reverse_acting': False, 'min_kp': 0.001, 'max_kp': 100.0, 'min_ki': 1e-6, 'max_ki': 0.05
         },
         f"{sweep_type}_do_feb25_nighttime": {
-            'tf_num': [3.923], 'tf_den': [3012.232, 1], 'tf_delay': 0.0,
-            'tf_n_pade': 2, 'computed_delay': 0.05, 'is_reverse_acting': False, 'max_kp': 100.0
+            'tf_num': [3.923], 'tf_den': [3012.232, 1], 'tf_delay': 0.0, 'tf_n_pade': 2, 'computed_delay': 0.05, 
+            'is_reverse_acting': False, 'min_kp': 0.001, 'max_kp': 100.0, 'min_ki': 1e-6, 'max_ki': 0.05
         },
         f"{sweep_type}_do_feb26_nighttime": {
-            'tf_num': [3.132], 'tf_den': [2530.052, 1], 'tf_delay': 0,
-            'tf_n_pade': 2, 'computed_delay': 0.05, 'is_reverse_acting': False, 'max_kp': 100.0
+            'tf_num': [3.132], 'tf_den': [2530.052, 1], 'tf_delay': 0, 'tf_n_pade': 2, 'computed_delay': 0.05, 
+            'is_reverse_acting': False, 'min_kp': 0.001, 'max_kp': 100.0, 'min_ki': 1e-6, 'max_ki': 0.05
         },
         f"{sweep_type}_tds_feb09_10": {
-            'tf_num': [-21.082], 'tf_den': [71160.91, 1], 'tf_delay': 0,
-            'tf_n_pade': 2, 'computed_delay': 0.05, 'is_reverse_acting': True, 'max_kp': -100.0
+            'tf_num': [-21.082], 'tf_den': [71160.91, 1], 'tf_delay': 0, 'tf_n_pade': 2, 'computed_delay': 0.05, 
+            'is_reverse_acting': True, 'min_kp': -100.0, 'max_kp': -0.001, 'min_ki': -0.05, 'max_ki': -1e-6
         },
         f"{sweep_type}_tds_feb10_11": {
-            'tf_num': [-15.519], 'tf_den': [40156.08, 1], 'tf_delay': 0,
-            'tf_n_pade': 2, 'computed_delay': 0.05, 'is_reverse_acting': True, 'max_kp': -100.0
+            'tf_num': [-15.519], 'tf_den': [40156.08, 1], 'tf_delay': 0, 'tf_n_pade': 2, 'computed_delay': 0.05, 
+            'is_reverse_acting': True, 'min_kp': -100.0, 'max_kp': -0.001, 'min_ki': -0.05, 'max_ki': -1e-6
         },
         f"{sweep_type}_tds_feb11_12": {
-            'tf_num': [-12.458], 'tf_den': [16825.29, 1], 'tf_delay': 0,
-            'tf_n_pade': 2, 'computed_delay': 0.05, 'is_reverse_acting': True, 'max_kp': -100.0
+            'tf_num': [-12.458], 'tf_den': [16825.29, 1], 'tf_delay': 0, 'tf_n_pade': 2, 'computed_delay': 0.05, 
+            'is_reverse_acting': True, 'min_kp': -100.0, 'max_kp': -0.001, 'min_ki': -0.05, 'max_ki': -1e-6
         }
     }
 
-    # --- 3. BASE CONFIGURATION ---
     base_config = {
         'max_iters': 100,           
         'runs': 10,                 
@@ -171,18 +154,17 @@ if __name__ == '__main__':
         'tol': 1e-3,                
         'num_parents_mating': 0.5,  
         'parent_selection_type': "rank",
-        'keep_elitism': 0.05,    # percentage      
+        'keep_elitism': 0.05,     
         'crossover_type': "scattered",
-        'crossover_probability': 0.90 # Locking this to a static value while we sweep mutation
+        'crossover_probability': 0.90,
+        'weights': [1.0, 1.0, 1.0, 1.0] # Custom fitness weights
     }
 
-    # Mutation is usually lower than crossover. We will sweep from 0.0 to 0.5 in steps of 0.05
     start_value = 0.0
     end_value = 0.5
     num_bins = 11  
     
     dynamic_values = np.linspace(start_value, end_value, num_bins).tolist()
-    
     print(f"Generated Sweep Values: {dynamic_values}")
 
     sweep_config = {
@@ -194,7 +176,6 @@ if __name__ == '__main__':
 
     output_dir = os.path.join(SCRIPT_DIR, 'GA_SWEEP_BASE_MUTATION')
 
-    # --- 5. INITIALIZE AND RUN SWEEPER ---
     sweeper = OptimizationSweeper(
         optimizer_class=BaseMutationSweepGAOptimizer, 
         sweep_config=sweep_config,
