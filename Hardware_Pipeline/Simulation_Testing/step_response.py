@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 # ==========================================
 # HARDWARE PIPELINE IMPORTS
 # ==========================================
+# Make sure this module is accessible in your environment
 from Evolutionary_Algorithm_Testing.de.de_optimizer import DEOptimizer
 
 # ==========================================
@@ -144,7 +145,21 @@ def run_de_tuner(name, tf_config, weights, min_kp=0.001, max_kp=20.0, min_ki=1e-
     return best_kp, best_ki
 
 # ==========================================
-# 4. MAIN EXECUTION
+# 4. METRIC COMPUTATION HELPER
+# ==========================================
+def compute_metrics(t, y, u, sp):
+    """Computes IAE, ITAE, and Control Effort AUC from simulation arrays."""
+    error = sp - y
+    abs_error = np.abs(error)
+    
+    iae = np.trapezoid(abs_error, t)
+    itae = np.trapezoid(t * abs_error, t)
+    u_auc = np.trapezoid(u, t)
+    
+    return iae, itae, u_auc
+
+# ==========================================
+# 5. MAIN EXECUTION
 # ==========================================
 def main():
     output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "simulation_graphs")
@@ -168,17 +183,17 @@ def main():
     max_ki = 0.002
     min_ki = 0
     
-    # 2a. Define DE Tuners [Error, Control Effort, Overshoot, Rise Time]
+    # 2a. Define DE Tuners
     de_tuner_configs = [
         {
             "name": "DE Baseline", 
-            "weights": (0.0, 2.0, 0.0, 2.0), 
+            "weights": (1.0, 1.0, 1.0, 1.0), 
             "color": "blue",
             "bounds": {"min_kp": min_kp, "max_kp": max_kp, "min_ki": min_ki, "max_ki": max_ki}
         },
     ]
 
-    # 2b. Define Hardcoded / External Tuners (MATLAB, Lambda, etc.)
+    # 2b. Define Hardcoded / External Tuners
     manual_configs = [
         {
             "name": "Lambda Tuning", 
@@ -198,9 +213,13 @@ def main():
         controller = PIController(kp=kp, ki=ki, dt=dt_step)
         t, y, u, sp = Simulator.run(plant_tf, controller, sequence=test_sequence, dt=dt_step)
         
+        iae, itae, u_auc = compute_metrics(t, y, u, sp)
+        print(f"[Metrics] {cfg['name']} -> IAE: {iae:.2f} | ITAE: {itae:.2f} | u_AUC: {u_auc:.2f}")
+
         results.append({
             "name": cfg["name"], "color": cfg["color"],
-            "t": t, "y": y, "u": u, "sp": sp, "kp": kp, "ki": ki
+            "t": t, "y": y, "u": u, "sp": sp, "kp": kp, "ki": ki,
+            "iae": iae, "itae": itae, "u_auc": u_auc
         })
 
     # 3b. Simulate Hardcoded / Manual Configurations
@@ -211,10 +230,14 @@ def main():
         controller = PIController(kp=kp, ki=ki, dt=dt_step)
         t, y, u, sp = Simulator.run(plant_tf, controller, sequence=test_sequence, dt=dt_step)
         
+        iae, itae, u_auc = compute_metrics(t, y, u, sp)
         print(f"[Result] {cfg['name']} -> Simulated with Kp: {kp:.4f}, Ki: {ki:.4f}")
+        print(f"[Metrics] {cfg['name']} -> IAE: {iae:.2f} | ITAE: {itae:.2f} | u_AUC: {u_auc:.2f}")
+        
         results.append({
             "name": cfg["name"], "color": cfg["color"],
-            "t": t, "y": y, "u": u, "sp": sp, "kp": kp, "ki": ki
+            "t": t, "y": y, "u": u, "sp": sp, "kp": kp, "ki": ki,
+            "iae": iae, "itae": itae, "u_auc": u_auc
         })
 
     # 4. Plotting
@@ -225,7 +248,8 @@ def main():
     plt.plot(results[0]["t"], results[0]["sp"], color='black', linewidth=1.5, label='Reference Setpoint', linestyle='--')
     
     for res in results:
-        label = f'{res["name"]} (Kp:{res["kp"]:.2f}, Ki:{res["ki"]:.4f})'
+        # Added IAE and ITAE metrics to the legend
+        label = f'{res["name"]} (Kp:{res["kp"]:.2f}, Ki:{res["ki"]:.4f} | IAE:{res["iae"]:.0f})'
         plt.plot(res["t"], res["y"], color=res["color"], linewidth=1.5, label=label)
 
     plt.title('Dissolved Oxygen Step Response Comparison')
@@ -242,9 +266,9 @@ def main():
     # Plot 2: Control Effort Comparison
     plt.figure(figsize=(12, 7))
     for res in results:
-        auc = np.trapezoid(res["u"], res["t"])
+        # Using the pre-calculated AUC
         plt.plot(res["t"], res["u"], color=res["color"], linewidth=1.2, alpha=0.8, 
-                 label=f'{res["name"]} Effort (AUC: {auc:.0f})')
+                 label=f'{res["name"]} Effort (AUC: {res["u_auc"]:.0f})')
 
     plt.title('Control Effort (Duty Cycle) Comparison')
     plt.xlabel('Time (s)')
