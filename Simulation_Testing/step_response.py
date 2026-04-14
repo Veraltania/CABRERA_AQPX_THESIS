@@ -140,11 +140,11 @@ def main():
     # Step Response Labels
     step_title = 'Step Response Comparison'
     step_x_label = 'Time (hours)'
-    step_y_label = 'DO (mg/l)'
+    step_y_label = 'TDS'
 
     # Control Effort Labels
     effort_title = 'Control Effort Comparison'
-    effort_x_label = 'Time (hours)'
+    effort_x_label = 'TDS'
     effort_y_label = 'Duty Cycle'
     # =======================================================
 
@@ -152,7 +152,7 @@ def main():
     os.makedirs(output_dir, exist_ok=True)
 
     # 1. System Definition
-    plant_params = {'K': 1.3460, 'tau': 1551.955, 'delay': 104.469} 
+    plant_params = {'K': -21.08, 'tau': 71160.91, 'delay': 0.0} 
     plant = create_fopdt_sys(**plant_params)
     
     # 2. Tuner Configurations
@@ -160,20 +160,14 @@ def main():
         {"name": "MATLAB Tuning", 
          "type": "manual", 
          "color": "blue", 
-         "kp": 0, 
-         "ki": 0},
-        {"name": "Lambda Tuning", 
-         "type": "manual", 
-         "color": "green"
-         "kp": 0.242213, 
-         "ki": 0.000551, 
-         }
+         "kp": -0.049449938, 
+         "ki": -2.09E-06},
     ]
 
     seq_config = {
-        'base_sp': 1.0, 'step_sp': 2.0,
-        'pre_step_delay': 10000, 'step_duration': 10000,
-        'recovery_duration': 10000, 'cycles': 2
+        'base_sp': 0.0, 'step_sp': 1.0,
+        'pre_step_delay': 80000, 'step_duration': 80000*3,
+        'recovery_duration': 80000, 'cycles': 2
     }
     
     total_time = seq_config['pre_step_delay'] + (seq_config['step_duration'] + seq_config['recovery_duration']) * seq_config['cycles']
