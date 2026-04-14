@@ -27,16 +27,31 @@ class BaseMutationSweepGAOptimizer(GAOptimizer):
 
     # OVERRIDE optimize_round to inject the custom base mutation into the decay formula
     def optimize_round(self, round_num):
-        def cost_wrapper(solution):
-            return self.calculate_cost(solution[0], solution[1])
+        best_sol_tracker = {'x': None, 'cost': float('inf'), 'raw': None}
+
+        def fitness_wrapper(ga_instance, solution, solution_idx):
+            Kp, Ki = solution[0], solution[1]
+            raw_costs = self.calculate_cost(Kp, Ki)
+            
+            if raw_costs[0] >= 1e8:
+                return -1e9 
+
+            # FIX: Calculate the scalar weighted cost so it can be added to the 1e-8 tolerance
+            weighted_cost = sum(w * c for w, c in zip(self.weights, raw_costs))
+
+            if weighted_cost < best_sol_tracker['cost']:
+                best_sol_tracker['cost'] = weighted_cost
+                best_sol_tracker['x'] = (Kp, Ki)
+                best_sol_tracker['raw'] = raw_costs
+
+            return 1.0 / (weighted_cost + 1e-8)
 
         class Tracker:
-            def __init__(self, patience, tol, cost_func, base_mutation):
+            def __init__(self, patience, tol, base_mutation):
                 self.patience = patience
                 self.tol = tol
-                self.cost_func = cost_func
                 self.counter = 0
-                self.best_cost = float('inf')
+                self.best_fitness = -float('inf')
                 self.history = []
                 self.base_mutation = base_mutation
 
@@ -47,25 +62,22 @@ class BaseMutationSweepGAOptimizer(GAOptimizer):
                 # Formula: Base - 0.01 * (n/P). Bounded at 0.0
                 ga_instance.mutation_probability = max(0.0, self.base_mutation - 0.01 * (n / P))
 
-                solution, _, _ = ga_instance.best_solution()
-                cost = self.cost_func(solution)
-                self.history.append(cost)
-
-                if cost < 1e8:
-                    if cost < (self.best_cost - self.tol):
-                        self.best_cost = cost
-                        self.counter = 0
-                    else:
-                        self.counter += 1
+                best_fitness = ga_instance.best_solution()[1]
+                if best_fitness > (self.best_fitness + self.tol):
+                    self.best_fitness = best_fitness
+                    self.counter = 0
+                else:
+                    self.counter += 1
+                
+                if self.best_fitness <= 0:
+                    self.history.append(1e9)
+                else:
+                    self.history.append((1.0 / self.best_fitness) - 1e-8)
 
                 if self.counter >= self.patience:
                     return "stop"
 
-        def fitness_wrapper(ga_instance, solution, solution_idx):
-            cost = cost_wrapper(solution)
-            return float(1.0 / (cost + 1e-8))
-
-        tracker = Tracker(self.patience, self.tol, cost_wrapper, self.base_mutation)
+        tracker = Tracker(self.patience, self.tol, self.base_mutation)
 
         # Inherit boundaries dynamically from the base class
         bounds = [{'low': self.min_kp, 'high': self.max_kp}, {'low': self.min_ki, 'high': self.max_ki}]
@@ -90,11 +102,17 @@ class BaseMutationSweepGAOptimizer(GAOptimizer):
         ga_instance = pygad.GA(**ga_kwargs)
         ga_instance.run()
 
-        solution, _, _ = ga_instance.best_solution()
-        final_cost = cost_wrapper(solution)
+        iterations_run = ga_instance.generations_completed
+        
+        if best_sol_tracker['x'] is None:
+            final_Kp, final_Ki = 0.0, 0.0
+            best_sol_tracker['cost'] = 1e9
+            best_sol_tracker['raw'] = (1e9, 1e9, 1e9, 1e9)
+        else:
+            final_Kp, final_Ki = best_sol_tracker['x']
 
-        return solution[0], solution[1], final_cost, len(tracker.history), tracker.history
-
+        # FIX: Structure the return tuple precisely how `ea_optimizer.py` expects to unpack it
+        return (final_Kp, final_Ki, best_sol_tracker['cost'], best_sol_tracker['raw']), iterations_run, tracker.history
 
 if __name__ == '__main__':
     sweep_type = "ga_sweep_mutation"
