@@ -1,4 +1,6 @@
 import math
+import csv
+import os
 
 # ─────────────────────────────────────────────
 # Tuning parameter
@@ -93,3 +95,21 @@ print()
 print(f"  Kc formula : Kc = tau / (Kp * (tau + theta))")
 print(f"  Ki formula : Ki = (tau / Kp) * sqrt( (1 + Kc*Kp) / (2 * ζ * tau) )")
 print()
+
+# ─────────────────────────────────────────────
+# Export to CSV
+# ─────────────────────────────────────────────
+# Determine the absolute path of the directory containing this script
+script_dir = os.path.dirname(os.path.abspath(__file__))
+csv_filename = os.path.join(script_dir, "lambda_tuning_results.csv")
+
+with open(csv_filename, mode="w", newline="") as csv_file:
+    writer = csv.writer(csv_file)
+    # Write the header row
+    writer.writerow(["Label", "Kp", "tau", "theta", "Kc", "Ki"])
+    
+    # Write the data rows
+    for row in results:
+        writer.writerow(row)
+
+print(f"Data successfully exported to '{csv_filename}'.")
