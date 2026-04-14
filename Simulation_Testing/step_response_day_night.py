@@ -82,24 +82,33 @@ def run_de_tuner(name, tf_config, weights=(1.0, 1.0, 1.0, 1.0), min_kp=0.001, ma
     print(f"[Result] {name} -> Kp: {best_kp:.4f}, Ki: {best_ki:.4f} (Cost: {best_cost:.4f})")
     return best_kp, best_ki
 
-def simulate_period(plant_params, kp, ki, t_eval, setpoints):
-    """Simulates a block of time, accounting for baseline offsets."""
+def simulate_period(plant_params, kp, ki, t_eval, setpoints, X0_y=0.0, X0_u=0.0):
+    """Simulates a block of time, converting to State Space to maintain state continuity between shifts."""
     plant = create_fopdt_sys(**plant_params)
     controller = create_pi_controller(kp, ki)
     
     T_y = ct.feedback(ct.series(controller, plant), 1)
     T_u = ct.feedback(controller, plant)
 
+    # Convert to state space to allow passing initial conditions across the day/night boundary
+    ss_y = ct.tf2ss(T_y)
+    ss_u = ct.tf2ss(T_u)
+
     base_sp = setpoints[0]
     sp_shifted = setpoints - base_sp
     
-    _, y_out = ct.forced_response(T_y, t_eval, sp_shifted)
-    _, u_out = ct.forced_response(T_u, t_eval, sp_shifted)
+    # Simulate with provided initial states
+    time_res_y = ct.forced_response(ss_y, T=t_eval, U=sp_shifted, X0=X0_y)
+    time_res_u = ct.forced_response(ss_u, T=t_eval, U=sp_shifted, X0=X0_u)
     
+    # Extract final state vectors to pass to the next shift
+    X_final_y = time_res_y.states[:, -1]
+    X_final_u = time_res_u.states[:, -1]
+
     # Calculate initial steady state control effort required to maintain base_sp
     u_ss = base_sp / plant_params['K']
     
-    return y_out + base_sp, u_out + u_ss
+    return time_res_y.outputs + base_sp, time_res_u.outputs + u_ss, X_final_y, X_final_u
 
 # ==========================================
 # 3. METRIC CALCULATIONS
@@ -180,23 +189,18 @@ def main():
     plant_params_day = {'K': 1.1334 , 'tau': 2833.8197 , 'delay': 0.05} 
     plant_params_night = {'K': 2.0494, 'tau': 4499.9964, 'delay': 0.05}
     
-    seq_config = {
-        'base_sp': 0.5, 'step_sp': 1.5,
-        'pre_step_delay': 10000, 'step_duration': 10000,
-        'recovery_duration': 10000, 'cycles': 2
-    }
-    
     # Time Constants (Seconds)
     SEC_PER_HOUR = 3600
     TWELVE_HOURS = 12 * SEC_PER_HOUR
+    shift_hour = TWELVE_HOURS / SEC_PER_HOUR  # Used dynamically for plotting
     
     # 12-Hour Mirror Config: Sums to 43,200s (12h)
     # 2h baseline, 2 cycles of (2h step + 3h recovery)
     seq_config = {
         'base_sp': 0.5, 'step_sp': 1.5,
-        'pre_step_delay': 2 * SEC_PER_HOUR, 
-        'step_duration': 2 * SEC_PER_HOUR,
-        'recovery_duration': 3 * SEC_PER_HOUR, 
+        'pre_step_delay': 1800, 
+        'step_duration': 10800,
+        'recovery_duration': 7600, 
         'cycles': 2 
     }
 
@@ -211,10 +215,16 @@ def main():
     # 2. Strategy Executions
     results = []
 
-    print("\n--- Running Set-up 1: One-Shot (Day Tuner Only) ---")
-    kp_os, ki_os = run_de_tuner("One-Shot Day Tuner", plant_params_day, max_kp=1.5, max_ki=0.002)
-    y_day_os, u_day_os = simulate_period(plant_params_day, kp_os, ki_os, t_half, sp_half)
-    y_night_os, u_night_os = simulate_period(plant_params_night, kp_os, ki_os, t_half, sp_half)
+    print("\n--- Phase 1: Auto-Tuning Controllers ---")
+    # Tune the Day Plant ONCE
+    kp_day, ki_day = run_de_tuner("Day Tuner", plant_params_day, max_kp=1.5, max_ki=0.002)
+    # Tune the Night Plant ONCE
+    kp_night, ki_night = run_de_tuner("Night Tuner", plant_params_night, max_kp=1.5, max_ki=0.002)
+
+    print("\n--- Phase 2: Running Set-up 1: One-Shot (Day Tuner Only) ---")
+    # Use Day Tuner for both shifts
+    y_day_os, u_day_os, X0_y_os, X0_u_os = simulate_period(plant_params_day, kp_day, ki_day, t_half, sp_half)
+    y_night_os, u_night_os, _, _ = simulate_period(plant_params_night, kp_day, ki_day, t_half, sp_half, X0_y=X0_y_os, X0_u=X0_u_os)
     
     results.append({
         "name": "One-Shot", "color": "orange",
@@ -223,11 +233,11 @@ def main():
         "u": np.concatenate([u_day_os, u_night_os])
     })
 
-    print("\n--- Running Set-up 2: Two-Shot (Day & Night Tuners) ---")
-    kp_ts_day, ki_ts_day = run_de_tuner("Two-Shot Day Tuner", plant_params_day, max_kp=1.5, max_ki=0.002)
-    kp_ts_night, ki_ts_night = run_de_tuner("Two-Shot Night Tuner", plant_params_night, max_kp=1.5, max_ki=0.002)
-    y_day_ts, u_day_ts = simulate_period(plant_params_day, kp_ts_day, ki_ts_day, t_half, sp_half)
-    y_night_ts, u_night_ts = simulate_period(plant_params_night, kp_ts_night, ki_ts_night, t_half, sp_half)
+    print("\n--- Phase 3: Running Set-up 2: Two-Shot (Day & Night Tuners) ---")
+    # Reuse the EXACT same Day Tuner variables for the day shift
+    y_day_ts, u_day_ts, X0_y_ts, X0_u_ts = simulate_period(plant_params_day, kp_day, ki_day, t_half, sp_half)
+    # Switch to the Night Tuner variables for the night shift
+    y_night_ts, u_night_ts, _, _ = simulate_period(plant_params_night, kp_night, ki_night, t_half, sp_half, X0_y=X0_y_ts, X0_u=X0_u_ts)
     
     results.append({
         "name": "Two-Shot", "color": "blue",
@@ -275,8 +285,8 @@ def main():
     plt.figure(figsize=(14, 8)) # Slightly taller to make room for top legend
     plt.plot(t_full_hours, sp_full, 'k--', label='Reference Setpoint', alpha=0.6)
     
-    # Red dotted line bisecting day and night
-    plt.axvline(t_half, color='red', linestyle=':', linewidth=2, label='Day/Night Shift')
+    # Red dotted line bisecting day and night using the calculated shift_hour
+    plt.axvline(shift_hour, color='red', linestyle=':', linewidth=2, label='Day/Night Shift')
 
     for res in results:
         plt.plot(t_full_hours, res["y"], color=res["color"], label=f'{res["name"]} (IAE: {res["iae"]:.0f})')
@@ -298,8 +308,8 @@ def main():
     # ---- Figure 2: Control Effort ----
     plt.figure(figsize=(14, 8))
     
-    # Red dotted line bisecting day and night
-    plt.axvline(time_half_hours, color='red', linestyle=':', linewidth=2, label='Day/Night Shift')
+    # Red dotted line bisecting day and night using the calculated shift_hour
+    plt.axvline(shift_hour, color='red', linestyle=':', linewidth=2, label='Day/Night Shift')
 
     for res in results:
         plt.plot(t_full_hours, np.clip(res["u"], 0, 1), color=res["color"], label=f'{res["name"]} Effort')
