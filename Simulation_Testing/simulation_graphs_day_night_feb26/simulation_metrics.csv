@@ -1,0 +1,3 @@
+Setup,IAE,MAE,AUC_Effort,Rise_Time_Day_s,Rise_Time_Night_s,Overshoot_Day_pct,Overshoot_Night_pct
+One-Shot,6892.02,0.0798,32482.13,2165.00,1431.00,0.00,0.00
+Two-Shot,6318.79,0.0731,32491.86,2165.00,1236.00,0.00,0.00
