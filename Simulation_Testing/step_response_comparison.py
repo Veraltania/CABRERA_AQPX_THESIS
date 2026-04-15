@@ -135,8 +135,8 @@ def calculate_overshoot(y, sp, base_sp, step_sp):
 # ==========================================
 # 4. SCIPY DE TUNER (UPDATED FOR DIRECTION)
 # ==========================================
-
-def run_scipy_de_tuner(name, plant, min_kp, max_kp, min_ki, max_ki, tau, delay, weights, target_sp=1.0):
+def run_scipy_de_tuner(name, plant, min_kp, max_kp, min_ki, max_ki, tau, delay, weights, 
+                       target_sp=1.0, max_overshoot_limit=0.20):
     """Uses SciPy's DE applying the realistic saturated simulation"""
     print(f"\n[Auto-Tuner] Running SciPy DE Optimization: {name}")
     
@@ -149,23 +149,36 @@ def run_scipy_de_tuner(name, plant, min_kp, max_kp, min_ki, max_ki, tau, delay, 
 
     def objective(params):
         kp, ki = params
-        penalty = 1e9
+        penalty = 1e20
         
         try:
             y_out, u_out = simulate_saturated_pi(plant, kp, ki, t_opt, sp_opt, u_min=0.0, u_max=1.0)
             
-            # Normalize y_out so the math evaluates exactly the same whether target is +1 or -1
+            # Normalize y_out
             y_norm = y_out * np.sign(target_sp)
             
             if np.any(np.isnan(y_norm)) or np.any(np.isinf(y_norm)):
                 return penalty
                 
+            # --- OVERSHOOT CALCULATION ---
+            # Peak overshoot is the maximum value minus the setpoint (1.0 in y_norm)
+            peak_val = np.max(y_norm)
+            actual_overshoot = max(0.0, peak_val - 1.0) 
+            
+            # 1. Hard Constraint: If overshoot exceeds the limit, kill this candidate
+            if actual_overshoot > max_overshoot_limit:
+                return penalty
+
+            # 2. Stability Check: Kill candidates that oscillate wildly below zero
+            if np.min(y_norm) < -0.1:
+                return penalty
+            # -----------------------------
+
             error = 1.0 - y_norm
             int_error = np.trapezoid(np.abs(error), t_opt)
             int_control = np.trapezoid(u_out**2, t_opt)
             
-            # NEW: Calculate the Integral of Overshoot Area (matches the w4 piecewise logic)
-            # When error < 0, we are overshooting. Extract just the overshoot magnitude.
+            # Integral of Overshoot Area (for the soft cost)
             overshoot_array = np.where(error < 0, np.abs(error), 0.0)
             int_overshoot = np.trapezoid(overshoot_array, t_opt)
 
@@ -182,10 +195,8 @@ def run_scipy_de_tuner(name, plant, min_kp, max_kp, min_ki, max_ki, tau, delay, 
             norm_overshoot = int_overshoot / T_sim
             norm_rise_time = rise_time / avg_rise_time
             
-            if norm_error > 1.0 or norm_effort > 1.0 or norm_overshoot > 1.0 or norm_rise_time > 1.0:
-                return penalty
-                
-            if np.max(y_norm) > 1.3 or np.min(y_norm) < -0.1:
+            # Return penalty if normalization failed or values are extreme
+            if norm_error > 1.0 or norm_effort > 1.0 or norm_rise_time > 10.0:
                 return penalty
                 
             cost = (w_iae * norm_error) + (w_effort * norm_effort) + (w_os * norm_overshoot) + (w_rt * norm_rise_time)
@@ -271,12 +282,14 @@ def write_formatted_table(output_path, metric_name, tfs, metrics_dict):
 def main():
     base_dir = os.path.dirname(os.path.abspath(__file__))
     input_csv = os.path.join(base_dir, "tf_parameters_do.csv")
-    output_dir = os.path.join(base_dir, "simulation_graphs_comparison_do_4xcf")
+    output_dir = os.path.join(base_dir, "simulation_graphs_comparison_do_2xcf_cf_v_perf")
     os.makedirs(output_dir, exist_ok=True)
     
     aggregated_metrics = {'IAE': {}, 'Control_Effort': {}, 'Rise_Time': {}, 'Overshoot': {}}
     tf_list = read_tf_parameters(input_csv)
-    de_weights = [0.0, 4.0, 0.0, 0.0]
+    cf_weight = 2.0
+    perf_weight = 2.0
+    de_weights = [perf_weight, cf_weight, 0, 0]
 
     for tf_data in tf_list:
         tf_name = tf_data['name']
