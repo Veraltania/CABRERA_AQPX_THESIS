@@ -184,7 +184,7 @@ if __name__ == "__main__":
     pop_sizes = list(range(START_POP, END_POP + 1, STEP_SIZE))
     if pop_sizes[-1] != END_POP: pop_sizes.append(END_POP)
 
-    batch_dir = "BATCH_OPENLOOP_CONTROL_EFFORT_1X"
+    batch_dir = "BATCH_OPENLOOP_CONTROL_EFFORT"
     sweep_type = "population_sweep"
 
     # --- DEFINING TRANSFER FUNCTIONS WITH SPECIFIC Kp & Ki BOUNDS ---
