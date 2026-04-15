@@ -174,17 +174,14 @@ def run_scipy_de_tuner(name, plant, min_kp, max_kp, min_ki, max_ki, tau, delay, 
                 return penalty
             # -----------------------------
 
-            # ... inside objective(params) ...
             error = 1.0 - y_norm
             int_error = np.trapezoid(np.abs(error), t_opt)
             
-            # --- THE PROPER NORMALIZATION: RMS of Control Effort Changes ---
+            # --- THE PROPER NORMALIZATION: Total Variation ---
+            # Levels the playing field between Kp and Ki, but strictly punishes oscillation/chatter
             # Prepend 0.0 to capture the initial jump at t=0
             u_with_initial = np.concatenate(([0.0], u_out))
-            
-            # Root Mean Square of the jumps perfectly normalizes the metric 
-            # independent of T_sim or number of steps. Bounded natively [0, 1].
-            norm_effort = np.sqrt(np.mean(np.diff(u_with_initial)**2))
+            norm_effort = np.sum(np.abs(np.diff(u_with_initial)))
             
             # Integral of Overshoot Area (for the soft cost)
             overshoot_array = np.where(error < 0, np.abs(error), 0.0)
@@ -289,12 +286,15 @@ def write_formatted_table(output_path, metric_name, tfs, metrics_dict):
 def main():
     base_dir = os.path.dirname(os.path.abspath(__file__))
     input_csv = os.path.join(base_dir, "tf_parameters_do.csv")
-    output_dir = os.path.join(base_dir, "simulation_graphs_comparison_do_1xcf")
+    output_dir = os.path.join(base_dir, "simulation_graphs_comparison_do_0_75xcf")
     os.makedirs(output_dir, exist_ok=True)
     
     aggregated_metrics = {'IAE': {}, 'Control_Effort': {}, 'Rise_Time': {}, 'Overshoot': {}}
     tf_list = read_tf_parameters(input_csv)
-    de_weights = [1.0, 1.5, 1.0, 1.0]
+    
+    cf_weight = 0.75
+    perf_weight = (4.0 - cf_weight) / 3
+    de_weights = [perf_weight, cf_weight, perf_weight, perf_weight]
 
     for tf_data in tf_list:
         tf_name = tf_data['name']
@@ -356,9 +356,9 @@ def main():
             error = setpoints - y_out
             iae = np.trapezoid(np.abs(error), t_eval)
             
-            # Calculate the properly normalized RMS jump for the exported metrics table
+            # --- UPDATED METRIC EXPORT: Total Variation ---
             u_with_initial = np.concatenate(([0.0], u_out))
-            u_aggressiveness = np.sqrt(np.mean(np.diff(u_with_initial)**2))
+            u_aggressiveness = np.sum(np.abs(np.diff(u_with_initial)))
             
             rt = calculate_rise_time(t_eval, y_out, setpoints, seq_config['base_sp'], seq_config['step_sp'])
             os_pct = calculate_overshoot(y_out, setpoints, seq_config['base_sp'], seq_config['step_sp'])
@@ -370,7 +370,7 @@ def main():
             aggregated_metrics['Overshoot'][tf_name][tuner_key] = os_pct
 
             ax_y.plot(t_eval_hours, y_out, color=cfg["color"], label=f'{cfg["name"]} (IAE: {iae:.0f})')
-            ax_u.plot(t_eval_hours, u_out, color=cfg["color"], label=f'{cfg["name"]} (RMS Effort: {u_aggressiveness:.4f})')
+            ax_u.plot(t_eval_hours, u_out, color=cfg["color"], label=f'{cfg["name"]} (TV Effort: {u_aggressiveness:.4f})')
 
         ax_y.set_title(f'Step Response Comparison', fontsize=22, pad=20)
         ax_y.set_xlabel('Time (hours)', fontsize=18)
