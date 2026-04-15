@@ -285,14 +285,14 @@ def write_formatted_table(output_path, metric_name, tfs, metrics_dict):
 
 def main():
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    input_csv = os.path.join(base_dir, "tf_parameters_do.csv")
-    output_dir = os.path.join(base_dir, "simulation_graphs_comparison_do_0_75xcf")
+    input_csv = os.path.join(base_dir, "tf_parameters_tds.csv")
+    output_dir = os.path.join(base_dir, "simulation_graphs_comparison_tds_1xcf")
     os.makedirs(output_dir, exist_ok=True)
     
     aggregated_metrics = {'IAE': {}, 'Control_Effort': {}, 'Rise_Time': {}, 'Overshoot': {}}
     tf_list = read_tf_parameters(input_csv)
     
-    cf_weight = 0.75
+    cf_weight = 1.0
     perf_weight = (4.0 - cf_weight) / 3
     de_weights = [perf_weight, cf_weight, perf_weight, perf_weight]
 

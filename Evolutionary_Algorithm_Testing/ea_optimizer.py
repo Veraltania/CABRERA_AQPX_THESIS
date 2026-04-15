@@ -13,97 +13,145 @@ os.environ["JULIA_IO_COLORED"] = "1"
 
 from juliacall import Main as jl
 
+# UPDATED: The DDE now handles [0, 1] clamping, calculates continuous anti-windup,
+# and tracks pure `y` and `int_e` states so Python can perfectly reconstruct 
+# the Total Variation (TV) control effort.
 jl.seval("""
 using DelayDiffEq
 
 function dde_system(du, u, h, p, t)
-    Kp_c, Ki_c, K_p, T_p, tau = p
+    Kp_c, Ki_c, K_p, T_p, tau, target_sp = p
     y = u[1]
+    int_e = u[2]
 
+    # Calculate delayed control effort (what actually enters the plant)
     past = h(p, t - tau)
     past_y = past[1]
     past_int_e = past[2]
-
-    if (t-tau) >= 0.0
-         past_setpoint = 1.0
-    else
-         past_setpoint = 0.0
-    end
-
-    u_raw = Kp_c * (past_setpoint - past_y) + Ki_c * past_int_e
     
-    # FIXED: Actuator must allow negative control effort (-1.0 to 1.0) 
-    # to drive a reverse-acting (negative gain) plant to a positive setpoint.
-    u_delayed = clamp(u_raw, -1.0, 1.0)
+    past_sp = (t - tau) >= 0.0 ? target_sp : 0.0
+    u_raw_delayed = Kp_c * (past_sp - past_y) + Ki_c * past_int_e
+    
+    # Actuator strictly clamped to [0.0, 1.0] 
+    u_delayed = clamp(u_raw_delayed, 0.0, 1.0)
     
     du[1] = (K_p * u_delayed - y) / T_p
-    e = 1.0 - y
-    du[2] = e
-    du[3] = abs(e)
-    du[4] = u_delayed^2
+    
+    # Calculate current state for integrator & anti-windup
+    current_sp = t >= 0.0 ? target_sp : 0.0
+    e_current = current_sp - y
+    u_raw_current = Kp_c * e_current + Ki_c * int_e
+    
+    # Anti-windup: unconditionally stop integrating if saturated 
+    # (Matches `if u_raw != u_clamped:` from step_response_comparison.py)
+    if u_raw_current > 1.0 || u_raw_current < 0.0
+        du[2] = 0.0 
+    else
+        du[2] = e_current
+    end
 end
 
 function dde_history(p, t)
-    return [0.0, 0.0, 0.0, 0.0]
+    return [0.0, 0.0]
 end
 
-function run_dde_solver(Kp_ctrl, Ki_ctrl, K_plant, T_plant, delay)
-    u0 = [0.0, 0.0, 0.0, 0.0]
-    p = (Kp_ctrl, Ki_ctrl, K_plant, T_plant, delay)
+function run_dde_solver(Kp_ctrl, Ki_ctrl, K_plant, T_plant, delay, target_sp)
+    u0 = [0.0, 0.0]
+    p = (Kp_ctrl, Ki_ctrl, K_plant, T_plant, delay, target_sp)
     simulation_time = T_plant * 3 + delay
     tspan = (0.0, simulation_time)
 
     prob = DDEProblem(dde_system, u0, dde_history, tspan, p, constant_lags=[delay])
 
     try
-        sol = solve(prob, MethodOfSteps(Tsit5()), abstol=1e-3, reltol=1e-3, tstops=[delay])
+        # Force exactly 1000 uniform points to perfectly match np.linspace target
+        saveat_interval = simulation_time / 999.0
+        sol = solve(prob, MethodOfSteps(Tsit5()), abstol=1e-3, reltol=1e-3, saveat=saveat_interval)
+        
         if sol.retcode != ReturnCode.Success
-            return (9e9, 9e9, Float64[], Float64[], simulation_time)
+            return (Float64[], Float64[], Float64[], simulation_time)
         end
 
-        y_vals = [u[1] for u in sol.u]
-        int_error = sol.u[end][3]
-        int_control = sol.u[end][4]
         t_vals = sol.t
+        y_vals = [u[1] for u in sol.u]
+        
+        # Reconstruct exactly what the actuator produced at each time step
+        u_vals = zeros(length(t_vals))
+        for i in 1:length(t_vals)
+            t = t_vals[i]
+            current_y = y_vals[i]
+            current_int_e = sol.u[i][2]
+            current_sp = t >= 0.0 ? target_sp : 0.0
+            
+            u_raw = Kp_ctrl * (current_sp - current_y) + Ki_ctrl * current_int_e
+            u_vals[i] = clamp(u_raw, 0.0, 1.0)
+        end
 
-        return (int_error, int_control, y_vals, t_vals, simulation_time)
+        return (y_vals, u_vals, t_vals, simulation_time)
     catch e
-        return (9e9, 9e9, Float64[], Float64[], 0.0)
+        return (Float64[], Float64[], Float64[], 0.0)
     end
 end
 """)
 
 def fast_fbest_diffeq(Kp_ctrl, Ki_ctrl, K_plant, T_plant, delay, avg_rise_time):
-    int_error, int_control, y_vals_jl, t_vals_jl, T_sim = jl.run_dde_solver(
-        Kp_ctrl, Ki_ctrl, K_plant, T_plant, delay
+    target_sp = 1.0 if K_plant > 0 else -1.0
+    
+    y_vals_jl, u_vals_jl, t_vals_jl, T_sim = jl.run_dde_solver(
+        Kp_ctrl, Ki_ctrl, K_plant, T_plant, delay, target_sp
     )
 
-    penalty = (1e9, 1e9, 1e9, 1e9)
+    penalty = (1e20, 1e20, 1e20, 1e20)
 
-    if int_error == 9e9 and len(y_vals_jl) == 0:
+    if len(y_vals_jl) == 0:
         return penalty
 
-    y_vals = np.array(y_vals_jl)
-    t_vals = np.array(t_vals_jl)
+    y_out = np.array(y_vals_jl)
+    u_out = np.array(u_vals_jl)
+    t_opt = np.array(t_vals_jl)
 
-    crossings_10 = np.where(y_vals >= 0.1)[0]
-    crossings_90 = np.where(y_vals >= 0.9)[0]
+    # Normalize response relative to expected sign
+    y_norm = y_out * np.sign(target_sp)
+
+    if np.any(np.isnan(y_norm)) or np.any(np.isinf(y_norm)):
+        return penalty
+
+    # --- OVERSHOOT CALCULATION ---
+    peak_val = np.max(y_norm)
+    actual_overshoot = max(0.0, peak_val - 1.0)
+    max_overshoot_limit = 0.20
+
+    if actual_overshoot > max_overshoot_limit:
+        return penalty
+
+    # Stability Check
+    if np.min(y_norm) < -0.1:
+        return penalty
+
+    error = 1.0 - y_norm
+    int_error = np.trapezoid(np.abs(error), t_opt)
+
+    # --- TOTAL VARIATION (CONTROL EFFORT) ---
+    u_with_initial = np.concatenate(([0.0], u_out))
+    norm_effort = np.sum(np.abs(np.diff(u_with_initial)))
+
+    # Integral of Overshoot Area
+    overshoot_array = np.where(error < 0, np.abs(error), 0.0)
+    int_overshoot = np.trapezoid(overshoot_array, t_opt)
+
+    crossings_10 = np.where(y_norm >= 0.1)[0]
+    crossings_90 = np.where(y_norm >= 0.9)[0]
 
     if len(crossings_10) > 0 and len(crossings_90) > 0:
-        rise_time = t_vals[crossings_90[0]] - t_vals[crossings_10[0]]
+        rise_time = t_opt[crossings_90[0]] - t_opt[crossings_10[0]]
     else:
-        rise_time = T_sim * 10 
+        rise_time = T_sim * 10
 
     norm_error = int_error / T_sim
-    norm_effort = int_control / T_sim
-    peak_y = np.max(y_vals)
-    norm_overshoot = max(0.0, peak_y - 1.0) / 0.5
+    norm_overshoot = int_overshoot / T_sim
     norm_rise_time = rise_time / avg_rise_time
 
-    if norm_error > 1.0 or norm_effort > 1.0 or norm_overshoot > 1.0 or norm_rise_time > 1.0:
-        return penalty
-        
-    if np.max(y_vals) > 1.3 or np.min(y_vals) < -0.1:
+    if norm_error > 2.0 or norm_rise_time > 10.0:
         return penalty
 
     return (norm_error, norm_effort, norm_overshoot, norm_rise_time)
@@ -138,7 +186,6 @@ class EvolutionaryOptimizer(ABC):
         self.is_reverse_acting = tf_params.get('is_reverse_acting', self.K_plant < 0)
         
         # --- Search Space Bounds ---
-        # FIXED: Prioritize tf_params explicitly, then config, then logical defaults
         if self.is_reverse_acting:
             self.min_kp = float(tf_params.get('min_kp', config.get('min_kp', -2.0)))
             self.max_kp = float(tf_params.get('max_kp', config.get('max_kp', -0.001)))
@@ -155,11 +202,10 @@ class EvolutionaryOptimizer(ABC):
         self.memo_cache = {}
 
     def calculate_cost(self, Kp, Ki):
-        # FIXED: Ensure boundaries strictly enforce *both* parameters mathematically
         if self.is_reverse_acting and (Kp > 0 or Ki > 0):
-            return (1e9, 1e9, 1e9, 1e9)
+            return (1e20, 1e20, 1e20, 1e20)
         if not self.is_reverse_acting and (Kp < 0 or Ki < 0):
-            return (1e9, 1e9, 1e9, 1e9)
+            return (1e20, 1e20, 1e20, 1e20)
 
         cache_key = (round(float(Kp), 5), round(float(Ki), 5))
         if cache_key in self.memo_cache:
@@ -170,10 +216,11 @@ class EvolutionaryOptimizer(ABC):
             self.memo_cache[cache_key] = cost_tuple
             return cost_tuple
         except:
-            return (1e9, 1e9, 1e9, 1e9)
+            return (1e20, 1e20, 1e20, 1e20)
 
     @property
     def plant(self):
+        # Kept for compatibility if sub-classes need access to the continuous theoretical plant
         if self._lazy_plant is None:
             num, den = ct.pade(self.delay, self._raw_tf_params.get('tf_n_pade', 2))
             pade_delay = ct.TransferFunction(num, den)
@@ -182,29 +229,37 @@ class EvolutionaryOptimizer(ABC):
         return self._lazy_plant
 
     def simulate_response(self, Kp, Ki):
-        ctrl = ct.TransferFunction([Kp, Ki], [1, 0])
-        try:
-            sys = ct.feedback(self.plant * ctrl, 1)
-            simulation_time = self.delay + (self.T_plant * 5)
-            T_sim = np.linspace(0, simulation_time, 1000)
-            T, y = ct.step_response(sys, T_sim)
-            return T, y
-        except:
+        # UPDATED: Avoid control.step_response(). Linear models don't enforce actuator
+        # saturation bounds. We reuse the DDE to plot physically accurate curves.
+        target_sp = 1.0 if self.K_plant > 0 else -1.0
+        y_vals_jl, _, t_vals_jl, _ = jl.run_dde_solver(
+            Kp, Ki, self.K_plant, self.T_plant, self.delay, target_sp
+        )
+        if len(y_vals_jl) == 0:
             return None, None
+        return np.array(t_vals_jl), np.array(y_vals_jl)
 
     def save_plot(self, round_num, best_Kp, best_Ki, best_cost):
         T_best, y_best = self.simulate_response(best_Kp, best_Ki)
         if T_best is None: return
 
+        target_sp = 1.0 if self.K_plant > 0 else -1.0
+
         plt.figure(figsize=(10, 6))
         plt.plot(T_best, y_best, linewidth=2, color='#1f77b4', label=f'Best (Kp={best_Kp:.3f}, Ki={best_Ki:.3f})')
-        plt.axhline(1.0, color='red', linestyle='--', linewidth=2, label='Target (1.0)')
+        plt.axhline(target_sp, color='red', linestyle='--', linewidth=2, label=f'Target ({target_sp})')
         plt.title(f'Final Best Step Response (Cost: {best_cost:.4f})', fontsize=14, fontweight='bold')
         plt.ylabel('Process Output (y)')
         plt.xlabel('Time (s)')
         plt.grid(True, linestyle=':', linewidth=0.7)
         plt.legend(loc='lower right')
-        plt.ylim(bottom=0)
+        
+        # Set realistic y-limits depending on direction
+        if self.is_reverse_acting:
+            plt.ylim(top=0.1)
+        else:
+            plt.ylim(bottom=-0.1)
+            
         plt.tight_layout()
         plt.savefig(self.output_dir / f'final_response_round_{round_num:03d}.png', dpi=300)
         plt.close()
