@@ -109,20 +109,19 @@ def read_tf_parameters(filepath):
                 'K': safe_float(row[1]),
                 'tau': safe_float(row[2]),
                 'delay': safe_float(row[3])
-                # Removed MATLAB and Lambda reading logic as they are no longer used
             }
             tfs.append(tf_data)
     return tfs
 
 def write_tradeoff_table(output_path, tf_name, sweep_results):
     """Writes the sweep metrics to a CSV for a specific transfer function."""
-    headers = ['ce_weight', 'Kp', 'Ki', 'IAE', 'Total_Variation', 'Rise_Time', 'Overshoot']
+    headers = ['CE_Weight_Pct', 'Kp', 'Ki', 'IAE', 'Total_Variation', 'Rise_Time', 'Overshoot']
     with open(output_path, 'w', newline='') as f:
         writer = csv.writer(f)
         writer.writerow(headers)
         for res in sweep_results:
             writer.writerow([
-                f"{res['ce']:.2f}",
+                f"{res['ce_pct']:.1f}%",
                 f"{res['kp']:.6f}",
                 f"{res['ki']:.6f}",
                 f"{res['iae']:.2f}",
@@ -148,13 +147,13 @@ def main():
     # ------------------------------------------
     start_ce = 1.0      # Minimum Control Effort Weight
     end_ce = 2.0        # Maximum Control Effort Weight
-    num_bins = 11        # Number of evaluations to sweep
+    num_bins = 11       # Number of evaluations to sweep
     # ------------------------------------------
 
     fontsize = 18
     
     ce_weights_to_test = np.linspace(start_ce, end_ce, num_bins)
-    colors = cm.viridis(np.linspace(0, 0.9, num_bins)) # Colormap for visualization
+    colors = cm.viridis(np.linspace(0, 0.9, num_bins))
 
     for tf_data in tf_list:
         tf_name = tf_data['name']
@@ -192,12 +191,13 @@ def main():
 
         # 1. RUN THE PARAMETER SWEEP
         for idx, ce in enumerate(ce_weights_to_test):
+            ce_pct = (ce / 4.0) * 100.0 
             perf = (4.0 - ce) / 3.0
             de_weights = [perf, ce, perf, perf]
             
-            print(f"  Tuning for ce_weight = {ce:.2f}...")
+            print(f"  Tuning for CE Weight = {ce_pct:.1f}%...")
             de_kp, de_ki = run_scipy_de_tuner(
-                f"DE (ce={ce:.2f})", plant,
+                f"DE (ce={ce_pct:.1f}%)", plant,
                 min_kp, max_kp, min_ki, max_ki,
                 plant_params['tau'], plant_params['delay'], de_weights,
                 target_sp=target_sp
@@ -215,17 +215,17 @@ def main():
             os_pct = calculate_overshoot(y_out, setpoints, seq_config['base_sp'], seq_config['step_sp'])
             
             sweep_results.append({
-                'ce': ce, 'kp': de_kp, 'ki': de_ki,
+                'ce': ce, 'ce_pct': ce_pct, 'kp': de_kp, 'ki': de_ki,
                 'iae': iae, 'tv': tv_effort, 'rt': rt, 'os': os_pct,
                 'y': y_out, 'u': u_out, 'color': colors[idx]
             })
 
-        # 2. GENERATE PLOTS
+        # 2. GENERATE TIME SERIES PLOTS
         # Plot A: Step Response Overlay
         fig_y, ax_y = plt.subplots(figsize=(12, 6))
         ax_y.plot(t_eval_hours, setpoints, 'k--', label='Setpoint', alpha=0.6)
         for res in sweep_results:
-            ax_y.plot(t_eval_hours, res['y'], color=res['color'], label=f"ce={res['ce']:.2f}")
+            ax_y.plot(t_eval_hours, res['y'], color=res['color'], label=f"{res['ce_pct']:.0f}% CE")
             
         ax_y.set_title(f'Step Response Sweep ({tf_name})', fontsize=fontsize)
         ax_y.set_xlabel('Time (hours)', fontsize=fontsize)
@@ -239,7 +239,7 @@ def main():
         # Plot B: Control Effort Overlay
         fig_u, ax_u = plt.subplots(figsize=(12, 6))
         for res in sweep_results:
-            ax_u.plot(t_eval_hours, res['u'], color=res['color'], label=f"ce={res['ce']:.2f}")
+            ax_u.plot(t_eval_hours, res['u'], color=res['color'], label=f"{res['ce_pct']:.0f}% CE")
             
         ax_u.set_title(f'Control Effort Sweep ({tf_name})', fontsize=fontsize)
         ax_u.set_xlabel('Time (hours)', fontsize=fontsize)
@@ -251,30 +251,69 @@ def main():
         fig_u.savefig(os.path.join(output_dir, f"control_effort_sweep_{tf_name}.png"))
         plt.close(fig_u)
 
-        # Plot C: Pareto Trade-off Curve (IAE vs Total Variation)
-        fig_p, ax_p = plt.subplots(figsize=(10, 8))
+        # 3. GENERATE TRADEOFF PLOTS
         iaes = [r['iae'] for r in sweep_results]
         tvs = [r['tv'] for r in sweep_results]
-        ces = [r['ce'] for r in sweep_results]
+        rts = [r['rt'] for r in sweep_results]
+        oss = [r['os'] for r in sweep_results]
+        ce_pcts = [r['ce_pct'] for r in sweep_results]
         
-        ax_p.plot(tvs, iaes, 'k-', alpha=0.3, zorder=1) # Connecting line
-        scatter = ax_p.scatter(tvs, iaes, c=ces, cmap='viridis', s=100, zorder=2)
+        # Convert TV to a percentage relative to the maximum TV observed in this sweep
+        max_tv = max(tvs) if max(tvs) > 0 else 1.0
+        tvs_pct = [(tv / max_tv) * 100.0 for tv in tvs]
         
-        for i, res in enumerate(sweep_results):
-            ax_p.annotate(f"ce={res['ce']:.2f}", (tvs[i], iaes[i]), textcoords="offset points", xytext=(10,5), ha='left')
+        # Define the three tradeoffs to plot
+        tradeoff_configs = [
+            ('iae', iaes, 'Integral Absolute Error (IAE)', 'IAE'),
+            ('rt', rts, 'Rise Time (hours)', 'Rise Time'),
+            ('os', oss, 'Overshoot (%)', 'Overshoot')
+        ]
+        
+        for metric_key, y_vals, ylabel, title_name in tradeoff_configs:
+            fig_p, ax_p = plt.subplots(figsize=(10, 8))
+            
+            # Sort for clean connecting lines
+            sort_indices = np.argsort(tvs_pct)
+            x_sorted = np.array(tvs_pct)[sort_indices]
+            y_sorted = np.array(y_vals)[sort_indices]
+            
+            # Connecting line
+            ax_p.plot(x_sorted, y_sorted, 'k-', alpha=0.3, zorder=1) 
+            
+            # Linear Fit
+            z = np.polyfit(tvs_pct, y_vals, 1)
+            p = np.poly1d(z)
+            
+            # Trendline
+            ax_p.plot(x_sorted, p(x_sorted), "r--", alpha=0.7, zorder=2, label='Linear Fit')
+            
+            # Display equation
+            mid_x = np.mean(tvs_pct)
+            mid_y = p(mid_x)
+            ax_p.text(mid_x, mid_y, f"  {title_name} = {z[0]:.2f}(%CEW) + {z[1]:.2f}", 
+                      color='red', fontsize=fontsize-4, verticalalignment='bottom', zorder=4)
 
-        ax_p.set_title(f'Trade-off: IAE vs Control Effort ({tf_name})', fontsize=fontsize)
-        ax_p.set_xlabel('Total Variation (Control Effort)', fontsize=fontsize)
-        ax_p.set_ylabel('Integral Absolute Error (IAE)', fontsize=fontsize)
-        ax_p.grid(True, alpha=0.3)
-        cbar = plt.colorbar(scatter, ax=ax_p)
-        cbar.set_label('Control Effort Weight (CEW)', rotation=270, labelpad=15)
-        
-        fig_p.tight_layout()
-        fig_p.savefig(os.path.join(output_dir, f"tradeoff_curve_{tf_name}.png"))
-        plt.close(fig_p)
+            # Scatter points
+            scatter = ax_p.scatter(tvs_pct, y_vals, c=ce_pcts, cmap='viridis', s=100, zorder=3)
+            
+            # CE % Annotations
+            for i, res in enumerate(sweep_results):
+                ax_p.annotate(f"{res['ce_pct']:.0f}%", (tvs_pct[i], y_vals[i]), 
+                              textcoords="offset points", xytext=(10,5), ha='left')
 
-        # 3. EXPORT METRICS TO CSV
+            ax_p.set_title(f'Trade-off: {title_name} vs Total Variation ({tf_name})', fontsize=fontsize)
+            ax_p.set_xlabel('Total Variation (% of Max)', fontsize=fontsize)
+            ax_p.set_ylabel(ylabel, fontsize=fontsize)
+            ax_p.grid(True, alpha=0.3)
+            
+            cbar = plt.colorbar(scatter, ax=ax_p)
+            cbar.set_label('Control Effort Contribution (%)', rotation=270, labelpad=20)
+            
+            fig_p.tight_layout()
+            fig_p.savefig(os.path.join(output_dir, f"tradeoff_{metric_key}_{tf_name}.png"))
+            plt.close(fig_p)
+
+        # 4. EXPORT METRICS TO CSV
         csv_path = os.path.join(output_dir, f"metrics_sweep_{tf_name}.csv")
         write_tradeoff_table(csv_path, tf_name, sweep_results)
 
