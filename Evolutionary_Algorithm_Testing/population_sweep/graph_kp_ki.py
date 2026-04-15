@@ -95,7 +95,7 @@ def generate_scatterplot(df, x_col, y_col, category, is_average, output_dir):
         print(f"No valid data available to plot for {category} ({'Average' if is_average else 'Raw'}).")
         return
         
-    plot_type = "Average" if is_average else "All Raw"
+    plot_type = "Average" if is_average else ""
     print(f"Generating DE {plot_type} Gain Scatterplot for {category} in {output_dir}...")
 
     # Select the correct order and palette based on the category
@@ -134,7 +134,7 @@ def generate_scatterplot(df, x_col, y_col, category, is_average, output_dir):
     # Label the axes
     ax.set_xlabel(x_col, fontweight='bold', fontsize=20)
     ax.set_ylabel(y_col, fontweight='bold', fontsize=20)
-    ax.set_title(f"DE Algorithm (Pop 50) - {category}: {plot_type} Gain Distribution", fontsize=20, fontweight='bold')
+    ax.set_title(f"DE-tuned{plot_type} Gain Distribution", fontsize=20, fontweight='bold', pad=30)
 
     # Ensure axes start at 0 (Accounting for negative reverse-acting gains in TDS)
     x_min, x_max = ax.get_xlim()
@@ -171,7 +171,7 @@ def generate_scatterplot(df, x_col, y_col, category, is_average, output_dir):
 if __name__ == "__main__":
     # Define directories
     script_dir = Path(__file__).parent.resolve()
-    batch_dir = script_dir / "BATCH_OPENLOOP_CONTROL_EFFORT_1X"
+    batch_dir = script_dir / "BATCH_OPENLOOP_CONTROL_EFFORT"
 
     if not batch_dir.exists():
         print(f"\n[SKIP] Directory not found: {batch_dir}")

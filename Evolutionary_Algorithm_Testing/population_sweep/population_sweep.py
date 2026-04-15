@@ -147,9 +147,9 @@ if __name__ == "__main__":
     total_cores = multiprocessing.cpu_count()
     num_cores = max(1, math.floor(total_cores * 0.75))
 
-    START_POP = 10
-    END_POP = 100
-    STEP_SIZE = 10
+    START_POP = 30
+    END_POP = 50
+    STEP_SIZE = 20
 
     shared_config = {
         "patience_limit": 25,

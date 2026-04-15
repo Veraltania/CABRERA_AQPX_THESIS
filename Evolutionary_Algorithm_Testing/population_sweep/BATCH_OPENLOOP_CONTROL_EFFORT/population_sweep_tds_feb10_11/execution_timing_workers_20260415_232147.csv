@@ -1,0 +1,7 @@
+Algorithm,Population Size,Elapsed Time (HH:MM:SS),Elapsed Time (Seconds)
+DE,30,00:01:20.99,80.99
+DE,50,00:02:04.29,124.29
+GA,30,00:02:22.91,142.91
+GA,50,00:03:24.39,204.39
+PSO,30,00:01:57.94,117.94
+PSO,50,00:02:48.03,168.03
