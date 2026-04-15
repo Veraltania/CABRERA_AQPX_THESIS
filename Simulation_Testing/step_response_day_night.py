@@ -4,14 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import control as ct
 
-# ==========================================
-# HARDWARE PIPELINE IMPORTS
-# ==========================================
-from Evolutionary_Algorithm_Testing.de.de_optimizer import DEOptimizer
-
-# ==========================================
-# 1. CONTROL LIBRARY WRAPPERS
-# ==========================================
+from scipy_de_tuner import run_scipy_de_tuner
 
 def create_fopdt_sys(K, tau, delay, pade_order=2):
     """Creates a Transfer Function for FOPDT using Pade approximation for delay."""
@@ -52,34 +45,22 @@ def generate_setpoint_array(t, sequence_config):
 # ==========================================
 
 def run_de_tuner(name, tf_config, weights=(1.0, 1.0, 1.0, 1.0), min_kp=0.001, max_kp=20.0, min_ki=1e-6, max_ki=0.05):
-    print(f"\n[Auto-Tuner] Running DE Optimization: {name}")
+    """Wrapper function to utilize the extracted SciPy DE Tuner."""
+    plant = create_fopdt_sys(tf_config['K'], tf_config['tau'], tf_config['delay'])
     
-    tf_params = {
-        'tf_num': [tf_config['K']], 
-        'tf_den': [tf_config['tau'], 1], 
-        'tf_delay': tf_config['delay'],
-        'tf_n_pade': 2, 
-        'computed_delay': tf_config['delay'], 
-        'is_reverse_acting': False, 
-        'min_kp': min_kp, 'max_kp': max_kp,
-        'min_ki': min_ki, 'max_ki': max_ki
-    }
+    best_kp, best_ki = run_scipy_de_tuner(
+        name=name, 
+        plant=plant, 
+        min_kp=min_kp, 
+        max_kp=max_kp, 
+        min_ki=min_ki, 
+        max_ki=max_ki, 
+        tau=tf_config['tau'], 
+        delay=tf_config['delay'], 
+        weights=weights,
+        target_sp=1.0 
+    )
     
-    config = {
-        'population_size': 1000,
-        'patience_limit': 20, 
-        'improvement_tol': 1e-4, 
-        'mutation': (0.5, 1.0), 
-        'recombination': 0.745, 
-        'strategy': 'best1bin',
-        'weights': weights
-    }
-    
-    optimizer = DEOptimizer(config, tf_params)
-    best_sol, _, _ = optimizer.optimize_round(round_num=1)
-    best_kp, best_ki, best_cost, _ = best_sol
-    
-    print(f"[Result] {name} -> Kp: {best_kp:.4f}, Ki: {best_ki:.4f} (Cost: {best_cost:.4f})")
     return best_kp, best_ki
 
 def simulate_period(plant_params, kp, ki, t_eval, setpoints):
