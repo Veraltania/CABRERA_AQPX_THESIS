@@ -83,10 +83,6 @@ def calculate_overshoot(y, sp, base_sp, step_sp):
                 in_step = False
     return max(0, max_os)
 
-# ==========================================
-# 3. UTILITIES
-# ==========================================
-
 def safe_float(val):
     if not val or str(val).strip() == '':
         return 0.0
@@ -141,8 +137,8 @@ def write_formatted_table(output_path, metric_name, tfs, metrics_dict):
 
 def main():
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    input_csv = os.path.join(base_dir, "tf_parameters_tds.csv")
-    output_dir = os.path.join(base_dir, "simulation_graphs_comparison_tds_1xcf")
+    input_csv = os.path.join(base_dir, "tf_parameters_do.csv")
+    output_dir = os.path.join(base_dir, "simulation_graphs_comparison_do_1xcf")
     os.makedirs(output_dir, exist_ok=True)
     
     aggregated_metrics = {'IAE': {}, 'Control_Effort': {}, 'Rise_Time': {}, 'Overshoot': {}}
