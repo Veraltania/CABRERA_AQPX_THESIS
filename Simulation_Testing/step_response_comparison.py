@@ -176,7 +176,7 @@ def run_scipy_de_tuner(name, plant, min_kp, max_kp, min_ki, max_ki, tau, delay, 
 
             error = 1.0 - y_norm
             int_error = np.trapezoid(np.abs(error), t_opt)
-            int_control = np.trapezoid(u_out**2, t_opt)
+            int_control = np.trapezoid(u_out**2, t_opt[:-1])
             
             # Integral of Overshoot Area (for the soft cost)
             overshoot_array = np.where(error < 0, np.abs(error), 0.0)
@@ -325,7 +325,7 @@ def main():
             max_ki, min_ki = 0, -0.0005 
         else:
             max_kp, min_kp = 1.5, 0
-            max_ki, min_ki = 0.005, 0
+            max_ki, min_ki = 0.01, 0
 
         # Run Auto-Tuner passing the custom target step
         de_kp, de_ki = run_scipy_de_tuner(
@@ -351,7 +351,7 @@ def main():
             
             error = setpoints - y_out
             iae = np.trapezoid(np.abs(error), t_eval)
-            u_auc = np.trapezoid(u_out**2, t_eval) 
+            u_auc = np.trapezoid(np.diff(u_out)**2, t_eval) 
             rt = calculate_rise_time(t_eval, y_out, setpoints, seq_config['base_sp'], seq_config['step_sp'])
             os_pct = calculate_overshoot(y_out, setpoints, seq_config['base_sp'], seq_config['step_sp'])
 
