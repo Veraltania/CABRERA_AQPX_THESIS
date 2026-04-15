@@ -49,7 +49,7 @@ def simulate_saturated_pi(plant, kp, ki, t_eval, setpoints, u_min=0.0, u_max=1.0
     dt = t_eval[1] - t_eval[0]
     
     sys_d_tf = ct.c2d(plant, dt)
-    sys_d_ss = ct.ss(sys_d_tf)  # <--- Fix: Convert to State-Space to get A, B, C, D matrices
+    sys_d_ss = ct.ss(sys_d_tf)  
     A, B, C, D = sys_d_ss.A, sys_d_ss.B, sys_d_ss.C, sys_d_ss.D
     
     n_steps = len(t_eval)
@@ -174,9 +174,17 @@ def run_scipy_de_tuner(name, plant, min_kp, max_kp, min_ki, max_ki, tau, delay, 
                 return penalty
             # -----------------------------
 
+            # ... inside objective(params) ...
             error = 1.0 - y_norm
             int_error = np.trapezoid(np.abs(error), t_opt)
-            int_control = np.trapezoid(u_out**2, t_opt[:-1])
+            
+            # --- THE PROPER NORMALIZATION: RMS of Control Effort Changes ---
+            # Prepend 0.0 to capture the initial jump at t=0
+            u_with_initial = np.concatenate(([0.0], u_out))
+            
+            # Root Mean Square of the jumps perfectly normalizes the metric 
+            # independent of T_sim or number of steps. Bounded natively [0, 1].
+            norm_effort = np.sqrt(np.mean(np.diff(u_with_initial)**2))
             
             # Integral of Overshoot Area (for the soft cost)
             overshoot_array = np.where(error < 0, np.abs(error), 0.0)
@@ -191,18 +199,17 @@ def run_scipy_de_tuner(name, plant, min_kp, max_kp, min_ki, max_ki, tau, delay, 
                 rise_time = T_sim * 10
                 
             norm_error = int_error / T_sim
-            norm_effort = int_control / T_sim
             norm_overshoot = int_overshoot / T_sim
             norm_rise_time = rise_time / avg_rise_time
             
-            # Return penalty if normalization failed or values are extreme
-            if norm_error > 1.0 or norm_effort > 1.0 or norm_rise_time > 10.0:
+            # Kill candidates that are wildly unstable
+            if norm_error > 2.0 or norm_rise_time > 10.0:
                 return penalty
                 
             cost = (w_iae * norm_error) + (w_effort * norm_effort) + (w_os * norm_overshoot) + (w_rt * norm_rise_time)
             return cost
             
-        except Exception:
+        except Exception as e:
             return penalty
 
     bounds = [(min_kp, max_kp), (min_ki, max_ki)]
@@ -282,14 +289,12 @@ def write_formatted_table(output_path, metric_name, tfs, metrics_dict):
 def main():
     base_dir = os.path.dirname(os.path.abspath(__file__))
     input_csv = os.path.join(base_dir, "tf_parameters_do.csv")
-    output_dir = os.path.join(base_dir, "simulation_graphs_comparison_do_2xcf_cf_v_perf")
+    output_dir = os.path.join(base_dir, "simulation_graphs_comparison_do_1xcf")
     os.makedirs(output_dir, exist_ok=True)
     
     aggregated_metrics = {'IAE': {}, 'Control_Effort': {}, 'Rise_Time': {}, 'Overshoot': {}}
     tf_list = read_tf_parameters(input_csv)
-    cf_weight = 2.0
-    perf_weight = 2.0
-    de_weights = [perf_weight, cf_weight, 0, 0]
+    de_weights = [1.0, 1.5, 1.0, 1.0]
 
     for tf_data in tf_list:
         tf_name = tf_data['name']
@@ -301,13 +306,12 @@ def main():
         plant_params = {'K': tf_data['K'], 'tau': tf_data['tau'], 'delay': tf_data['delay']} 
         plant = create_fopdt_sys(**plant_params)
         
-        # <--- FIX: Smart target generation based on Plant Direction
         target_sp = 1.0 if plant_params['K'] > 0 else -1.0
         
         time_factor = max(plant_params['tau'], 1000)
         seq_config = {
             'base_sp': 0.0, 
-            'step_sp': target_sp, # Used dynamically
+            'step_sp': target_sp,
             'pre_step_delay': max(time_factor, plant_params['delay']) * 2, 
             'step_duration': time_factor * 8,
             'recovery_duration': time_factor * 8, 
@@ -327,7 +331,7 @@ def main():
             max_kp, min_kp = 1.5, 0
             max_ki, min_ki = 0.01, 0
 
-        # Run Auto-Tuner passing the custom target step
+        # Run Auto-Tuner
         de_kp, de_ki = run_scipy_de_tuner(
             f"DE ({tf_name})", plant,
             min_kp, max_kp, min_ki, max_ki,
@@ -351,19 +355,23 @@ def main():
             
             error = setpoints - y_out
             iae = np.trapezoid(np.abs(error), t_eval)
-            u_auc = np.trapezoid(np.diff(u_out)**2, t_eval) 
+            
+            # Calculate the properly normalized RMS jump for the exported metrics table
+            u_with_initial = np.concatenate(([0.0], u_out))
+            u_aggressiveness = np.sqrt(np.mean(np.diff(u_with_initial)**2))
+            
             rt = calculate_rise_time(t_eval, y_out, setpoints, seq_config['base_sp'], seq_config['step_sp'])
             os_pct = calculate_overshoot(y_out, setpoints, seq_config['base_sp'], seq_config['step_sp'])
 
             tuner_key = cfg["name"]
             aggregated_metrics['IAE'][tf_name][tuner_key] = iae
-            aggregated_metrics['Control_Effort'][tf_name][tuner_key] = u_auc
+            aggregated_metrics['Control_Effort'][tf_name][tuner_key] = u_aggressiveness
             aggregated_metrics['Rise_Time'][tf_name][tuner_key] = rt
             aggregated_metrics['Overshoot'][tf_name][tuner_key] = os_pct
 
             ax_y.plot(t_eval_hours, y_out, color=cfg["color"], label=f'{cfg["name"]} (IAE: {iae:.0f})')
-            ax_u.plot(t_eval_hours, u_out, color=cfg["color"], label=f'{cfg["name"]} (Effort AUC: {u_auc:.0f})')
-            
+            ax_u.plot(t_eval_hours, u_out, color=cfg["color"], label=f'{cfg["name"]} (RMS Effort: {u_aggressiveness:.4f})')
+
         ax_y.set_title(f'Step Response Comparison', fontsize=22, pad=20)
         ax_y.set_xlabel('Time (hours)', fontsize=18)
         ax_y.set_ylabel('System Output', fontsize=18)
