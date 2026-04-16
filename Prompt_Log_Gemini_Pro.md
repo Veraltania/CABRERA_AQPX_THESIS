@@ -1,3 +1,5 @@
+Prompt Log: Optimization and experimental tool configuration for EA-based PI tuning using Google Gemini Pro
+
 Create a version of this script that instead has the idea to analyze whether a PI controller tuned on earlier dates (Feb 5) can still perform well after 20 days later (Feb 25). i was thinking of primarily doing it based on daytime data, with the PI controller tuned on Feb 5 daytime and then tested on Feb 25 and Feb 26 (whole day, as in both day and night). retain the same type of analyses (IAE, AUC) and style of graphing as before. STRIP AWAY THE MATLAB AND LAMBDA GAINS. 
 
 Create a version of step_response_comparison that instead compares the algorithms in terms of load disturbance rejection. strip away the setpoint tracking, just focus on load disturbance rejection. i want the analysis / graphing of the load disturbance rejection to be similar to the MATLAB script attached.
