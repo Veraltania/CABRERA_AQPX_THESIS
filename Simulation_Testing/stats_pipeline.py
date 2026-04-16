@@ -203,8 +203,8 @@ def run_statistical_pipeline(csv_filepath):
 
 if __name__ == "__main__":
     # You can loop through multiple files easily here:
-    target_files = ['Simulation_Testing/simulation_graphs_day_night_do/day_night_do_iae.csv', 
-                    'Simulation_Testing/simulation_graphs_day_night_do/day_night_do_control_effort.csv']
+    target_files = ['Simulation_Testing/simulation_graphs_controller_aging/controller_aging_control_effort.csv', 
+                    'Simulation_Testing/simulation_graphs_controller_aging/controller_aging_iae.csv']
     
     for file in target_files:
         print(f"\n{'='*50}")
