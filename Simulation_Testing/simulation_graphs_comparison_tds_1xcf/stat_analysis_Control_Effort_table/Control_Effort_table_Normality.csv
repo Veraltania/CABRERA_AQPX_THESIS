@@ -1,0 +1,4 @@
+Group,W-Statistic,p-value,Is_Normal
+DE-tuned,0.9995,0.9556,True
+Lambda-tuned ($\lambda$ = 3$\tau$),0.9996,0.9604,True
+"MATLAB pidtune(), balanced",0.9991,0.9415,True
