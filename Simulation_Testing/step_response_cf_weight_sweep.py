@@ -136,8 +136,8 @@ def write_tradeoff_table(output_path, tf_name, sweep_results):
 
 def main():
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    input_csv = os.path.join(base_dir, "tf_parameters_do.csv")
-    output_dir = os.path.join(base_dir, "simulation_graphs_ce_sweep")
+    input_csv = os.path.join(base_dir, "tf_parameters_tds.csv")
+    output_dir = os.path.join(base_dir, "simulation_graphs_ce_sweep_tds_wide_range")
     os.makedirs(output_dir, exist_ok=True)
     
     tf_list = read_tf_parameters(input_csv)
@@ -145,12 +145,12 @@ def main():
     # ------------------------------------------
     # CONFIGURATION: Parameter Sweep Settings
     # ------------------------------------------
-    start_ce = 1.0      # Minimum Control Effort Weight
-    end_ce = 2.0        # Maximum Control Effort Weight
+    start_ce = 0.25      # Minimum Control Effort Weight
+    end_ce = 3.75        # Maximum Control Effort Weight
     num_bins = 11       # Number of evaluations to sweep
     # ------------------------------------------
 
-    fontsize = 18
+    fontsize = 16
     
     ce_weights_to_test = np.linspace(start_ce, end_ce, num_bins)
     colors = cm.viridis(np.linspace(0, 0.9, num_bins))
@@ -227,7 +227,7 @@ def main():
         for res in sweep_results:
             ax_y.plot(t_eval_hours, res['y'], color=res['color'], label=f"{res['ce_pct']:.0f}% CE")
             
-        ax_y.set_title(f'Step Response Sweep ({tf_name})', fontsize=fontsize)
+        ax_y.set_title(f'Step Response Sweep', fontsize=fontsize)
         ax_y.set_xlabel('Time (hours)', fontsize=fontsize)
         ax_y.set_ylabel('System Output', fontsize=fontsize)
         ax_y.legend(loc='lower right', fontsize=fontsize-2)
@@ -241,7 +241,7 @@ def main():
         for res in sweep_results:
             ax_u.plot(t_eval_hours, res['u'], color=res['color'], label=f"{res['ce_pct']:.0f}% CE")
             
-        ax_u.set_title(f'Control Effort Sweep ({tf_name})', fontsize=fontsize)
+        ax_u.set_title(f'Control Effort Sweep', fontsize=fontsize)
         ax_u.set_xlabel('Time (hours)', fontsize=fontsize)
         ax_u.set_ylabel('Control Signal (u)', fontsize=fontsize)
         ax_u.set_ylim(-0.1, 1.1) 
@@ -285,24 +285,24 @@ def main():
             p = np.poly1d(z)
             
             # Trendline
-            ax_p.plot(x_sorted, p(x_sorted), "r--", alpha=0.7, zorder=2, label='Linear Fit')
+            # ax_p.plot(x_sorted, p(x_sorted), "r--", alpha=0.7, zorder=2, label='Linear Fit')
             
             # Display equation
             mid_x = np.mean(tvs_pct)
             mid_y = p(mid_x)
-            ax_p.text(mid_x, mid_y, f"  {title_name} = {z[0]:.2f}(%CEW) + {z[1]:.2f}", 
-                      color='red', fontsize=fontsize-4, verticalalignment='bottom', zorder=4)
+            # ax_p.text(mid_x, mid_y, f"  {title_name} = {z[0]:.2f}(%CEW) + {z[1]:.2f}", 
+            #           color='red', fontsize=fontsize-4, verticalalignment='bottom', zorder=4)
 
             # Scatter points
             scatter = ax_p.scatter(tvs_pct, y_vals, c=ce_pcts, cmap='viridis', s=100, zorder=3)
             
             # CE % Annotations
-            for i, res in enumerate(sweep_results):
-                ax_p.annotate(f"{res['ce_pct']:.0f}%", (tvs_pct[i], y_vals[i]), 
-                              textcoords="offset points", xytext=(10,5), ha='left')
+            # for i, res in enumerate(sweep_results):
+            #     ax_p.annotate(f"{res['ce_pct']:.0f}%", (tvs_pct[i], y_vals[i]), 
+            #                   textcoords="offset points", xytext=(10,5), ha='left')
 
-            ax_p.set_title(f'Trade-off: {title_name} vs Total Variation ({tf_name})', fontsize=fontsize)
-            ax_p.set_xlabel('Total Variation (% of Max)', fontsize=fontsize)
+            ax_p.set_title(f'Trade-off: {title_name} vs %CE', fontsize=fontsize)
+            ax_p.set_xlabel('%CE', fontsize=fontsize)
             ax_p.set_ylabel(ylabel, fontsize=fontsize)
             ax_p.grid(True, alpha=0.3)
             
