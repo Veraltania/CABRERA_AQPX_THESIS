@@ -87,7 +87,7 @@ def calculate_overshoot(y, sp, base_sp, step_sp):
 def analyze_root_locus_metrics(L_nom):
     """
     Analyzes the nominal open-loop transfer function to find the scale factors (k)
-    for marginal stability and the 50% damping ratio (zeta = 0.5).
+    for marginal stability and the lowest damping ratio on the locus.
     """
     k_vect = np.logspace(-5, 6, 8000)
     
@@ -96,7 +96,8 @@ def analyze_root_locus_metrics(L_nom):
         roots, gains = ct.root_locus(L_nom, kvect=k_vect, plot=False)
 
     k_marg = None
-    k_zeta_05 = None
+    k_min_zeta = None
+    min_zeta_val = None
 
     # 1. Marginal Stability (Imaginary axis crossing)
     for i, k in enumerate(gains):
@@ -113,27 +114,27 @@ def analyze_root_locus_metrics(L_nom):
                 k_marg = k
             break
 
-    # 2. Damping Ratio of 50% (zeta = 0.5)
+    # 2. Minimum Damping Ratio (Stable, Left Hand Plane branches only)
     for branch_idx in range(roots.shape[1]):
         branch_roots = roots[:, branch_idx]
-        valid_mask = np.abs(np.imag(branch_roots)) > 1e-5 
         
-        zetas = np.zeros_like(branch_roots, dtype=float)
-        with np.errstate(invalid='ignore', divide='ignore'):
-            zetas[valid_mask] = -np.real(branch_roots[valid_mask]) / np.abs(branch_roots[valid_mask])
+        # Only check complex roots in the left-hand plane (or on the imaginary axis)
+        valid_mask = (np.abs(np.imag(branch_roots)) > 1e-5) & (np.real(branch_roots) <= 0)
         
-        for i in range(len(zetas) - 1):
-            if valid_mask[i] and valid_mask[i+1]:
-                z1, z2 = zetas[i], zetas[i+1]
-                if (z1 - 0.5) * (z2 - 0.5) <= 0:
-                    w1 = abs(z2 - 0.5)
-                    w2 = abs(z1 - 0.5)
-                    if w1 + w2 > 0:
-                        k_interp = (gains[i]*w1 + gains[i+1]*w2) / (w1 + w2)
-                        if k_zeta_05 is None or k_interp < k_zeta_05:
-                            k_zeta_05 = k_interp
+        if np.any(valid_mask):
+            zetas = -np.real(branch_roots[valid_mask]) / np.abs(branch_roots[valid_mask])
+            
+            local_min_idx = np.argmin(zetas)
+            local_min_zeta = zetas[local_min_idx]
+            
+            actual_idx = np.where(valid_mask)[0][local_min_idx]
+            local_k = gains[actual_idx]
+            
+            if min_zeta_val is None or local_min_zeta < min_zeta_val:
+                min_zeta_val = local_min_zeta
+                k_min_zeta = local_k
 
-    return roots, gains, k_marg, k_zeta_05
+    return roots, gains, k_marg, k_min_zeta, min_zeta_val
 
 def safe_float(val):
     if not val or str(val).strip() == '':
@@ -189,13 +190,13 @@ def write_formatted_table(output_path, metric_name, tfs, metrics_dict):
 
 def main():
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    input_csv = os.path.join(base_dir, "tf_parameters_do.csv")
-    output_dir = os.path.join(base_dir, "simulation_graphs_comparison_do_1xcf_root_locus")
+    input_csv = os.path.join(base_dir, "tf_parameters_tds.csv")
+    output_dir = os.path.join(base_dir, "simulation_graphs_comparison_tds_1xcf_root_locus")
     os.makedirs(output_dir, exist_ok=True)
     
     aggregated_metrics = {
         'IAE': {}, 'Control_Effort': {}, 'Rise_Time': {}, 'Overshoot': {},
-        'RL_Marginal_Gain': {}, 'RL_Zeta05_Gain': {}
+        'RL_Marginal_Gain': {}, 'RL_Min_Zeta_Gain': {}, 'RL_Min_Zeta_Value': {}
     }
     
     tf_list = read_tf_parameters(input_csv)
@@ -299,26 +300,28 @@ def main():
             if abs(Kp_nom) < 1e-6 and abs(Ki_nom) < 1e-6:
                 ax_rl.set_title(f"{cfg['name']}\n(No valid tuning)")
                 aggregated_metrics['RL_Marginal_Gain'][tf_name][tuner_key] = 0.0
-                aggregated_metrics['RL_Zeta05_Gain'][tf_name][tuner_key] = 0.0
+                aggregated_metrics['RL_Min_Zeta_Gain'][tf_name][tuner_key] = 0.0
+                aggregated_metrics['RL_Min_Zeta_Value'][tf_name][tuner_key] = 0.0
                 continue
                 
             C_nom = ct.tf([Kp_nom, Ki_nom], [1, 0])
             L_nom = ct.series(C_nom, plant)
             
-            roots, gains, k_marg, k_zeta_05 = analyze_root_locus_metrics(L_nom)
+            roots, gains, k_marg, k_min_zeta, min_zeta_val = analyze_root_locus_metrics(L_nom)
             all_roots_arrays.append(roots) # Save to extract y-axis bounds later
             
             if abs(Kp_nom) < 1e-6: 
                 marg_val = k_marg * Ki_nom if k_marg is not None else 0.0
-                zeta_val = k_zeta_05 * Ki_nom if k_zeta_05 is not None else 0.0
+                zeta_gain_val = k_min_zeta * Ki_nom if k_min_zeta is not None else 0.0
                 gain_str = "Ki"
             else:
                 marg_val = k_marg * Kp_nom if k_marg is not None else 0.0
-                zeta_val = k_zeta_05 * Kp_nom if k_zeta_05 is not None else 0.0
+                zeta_gain_val = k_min_zeta * Kp_nom if k_min_zeta is not None else 0.0
                 gain_str = "Kp"
                 
             aggregated_metrics['RL_Marginal_Gain'][tf_name][tuner_key] = marg_val
-            aggregated_metrics['RL_Zeta05_Gain'][tf_name][tuner_key] = zeta_val
+            aggregated_metrics['RL_Min_Zeta_Gain'][tf_name][tuner_key] = zeta_gain_val
+            aggregated_metrics['RL_Min_Zeta_Value'][tf_name][tuner_key] = min_zeta_val if min_zeta_val is not None else 0.0
             
             for i in range(roots.shape[1]):
                 ax_rl.plot(np.real(roots[:, i]), np.imag(roots[:, i]), color=cfg['color'], alpha=0.6)
@@ -332,13 +335,27 @@ def main():
                     all_rl_reals.extend(np.real(pts))
                     all_rl_imags.extend(np.imag(pts))
 
-            ax_rl.plot(np.real(cl_poles), np.imag(cl_poles), 'kx', 
-                       markersize=10, markeredgewidth=2, 
-                       label=f'Nominal Poles ({gain_str}={Kp_nom if gain_str=="Kp" else Ki_nom:.3f})')
+            if len(ol_zeros) > 0:
+                ax_rl.plot(np.real(ol_zeros), np.imag(ol_zeros), 'ko', markerfacecolor='none', 
+                           markersize=7, markeredgewidth=1.5, label='OL Zeros')
+            if len(ol_poles) > 0:
+                ax_rl.plot(np.real(ol_poles), np.imag(ol_poles), 'kx', 
+                           markersize=7, markeredgewidth=1.5, label='OL Poles')
+
+            ax_rl.plot(np.real(cl_poles), np.imag(cl_poles), 'X', color='black', 
+                       markersize=10, markeredgewidth=1.5, 
+                       label=f'CL Poles ({gain_str}={Kp_nom if gain_str=="Kp" else Ki_nom:.3f})')
+            
+            if k_min_zeta is not None and min_zeta_val is not None:
+                zeta_poles = ct.poles(ct.feedback(k_min_zeta * L_nom))
+                all_rl_reals.extend(np.real(zeta_poles))
+                all_rl_imags.extend(np.imag(zeta_poles))
+                ax_rl.plot(np.real(zeta_poles), np.imag(zeta_poles), 'd', color='darkorange', markersize=8, 
+                           label=f'Min $\\zeta={min_zeta_val:.3f}$ (d, {gain_str}={zeta_gain_val:.3f})')
             
             title_str = f"{cfg['name']}\n"
             title_str += f"Marginal {gain_str} ≈ {marg_val:.3f}\n" if marg_val else f"Marginal {gain_str}: N/A\n"
-            title_str += f"{gain_str} at $\\zeta=0.5$ ≈ {zeta_val:.3f}" if zeta_val else f"{gain_str} at $\\zeta=0.5$: N/A"
+            title_str += f"Min $\\zeta={min_zeta_val:.3f}$ at {gain_str} ≈ {zeta_gain_val:.3f}" if min_zeta_val is not None else "Min $\\zeta$: N/A"
             
             ax_rl.set_title(title_str, fontsize=12)
             ax_rl.axhline(0, color='black', lw=0.5, ls='--')
@@ -353,25 +370,27 @@ def main():
         # 3. Apply Universal RL Axes (X and Y)
         # ---------------------------
         if all_rl_reals:
-            # Universalize X-Axis based on poles/zeros
             min_x = min(all_rl_reals)
             max_x = max(all_rl_reals)
             x_pad = (max_x - min_x) * 0.15
             if x_pad < 1e-4: x_pad = 0.1  
             
-            global_xlim = [min_x - x_pad, max(max_x + x_pad, 0.05)] 
+            # STRICTLY cap at 0.0 if there are no elements in the RHP
+            if max_x > 0:
+                right_lim = max_x + x_pad
+            else:
+                right_lim = 0.0
+                
+            global_xlim = [min_x - x_pad, right_lim] 
             
-            # Universalize Y-Axis by finding the highest locus branch *strictly within our X-bounds*
             max_y = 0.0
             for roots_array in all_roots_arrays:
-                # Mask roots that fall outside our visual X window to avoid infinity scaling
                 valid_mask = (np.real(roots_array) >= global_xlim[0]) & (np.real(roots_array) <= global_xlim[1])
                 if np.any(valid_mask):
                     local_max = np.max(np.abs(np.imag(roots_array[valid_mask])))
                     if local_max > max_y:
                         max_y = local_max
                         
-            # Ensure it also encompasses any stray complex poles/zeros if they exist
             if all_rl_imags:
                 max_y = max(max_y, max(np.abs(all_rl_imags)))
             
@@ -381,17 +400,24 @@ def main():
 
             global_ylim = [-(max_y + y_pad), (max_y + y_pad)]
             
-            for ax_rl in axes_rl:
+            for idx, ax_rl in enumerate(axes_rl):
                 ax_rl.set_xlim(global_xlim)
                 ax_rl.set_ylim(global_ylim)
                 
-                # Draw constant zeta=0.5 boundaries spanning to the new bounding box limits
-                x_damp = np.linspace(global_xlim[0], 0, 100)
-                y_damp = np.sqrt(3) * np.abs(x_damp)
-                ax_rl.plot(x_damp, y_damp, 'k:', alpha=0.4, label='$\\zeta=0.5$ boundary')
-                ax_rl.plot(x_damp, -y_damp, 'k:', alpha=0.4)
+                # Draw the specific minimum zeta boundary for this subplot's tuner
+                tuner_key = configs[idx]["name"]
+                mz = aggregated_metrics['RL_Min_Zeta_Value'][tf_name].get(tuner_key, None)
                 
-                # Remove duplicate legend entries
+                if mz is not None and mz > 1e-4:  # Avoid infinite slope at exactly zeta=0
+                    val = np.clip(mz, -1.0, 1.0)
+                    angle = np.arccos(val)
+                    slope = np.tan(angle)
+                    x_damp = np.linspace(global_xlim[0], 0, 100)
+                    y_damp = slope * np.abs(x_damp)
+                    ax_rl.plot(x_damp, y_damp, 'k:', alpha=0.4, label=f'Min $\\zeta={mz:.2f}$ boundary')
+                    ax_rl.plot(x_damp, -y_damp, 'k:', alpha=0.4)
+                
+                # Refresh legend to grab newly added boundary lines and remove duplicates
                 handles, labels = ax_rl.get_legend_handles_labels()
                 by_label = dict(zip(labels, handles))
                 ax_rl.legend(by_label.values(), by_label.keys(), loc='lower right', fontsize=9)
@@ -429,7 +455,10 @@ def main():
     write_formatted_table(os.path.join(output_dir, "Rise_Time_table.csv"), 'Rise_Time', tf_list, aggregated_metrics['Rise_Time'])
     write_formatted_table(os.path.join(output_dir, "Overshoot_table.csv"), 'Overshoot', tf_list, aggregated_metrics['Overshoot'])
     write_formatted_table(os.path.join(output_dir, "RL_Marginal_Gain_table.csv"), 'RL_Marginal_Gain', tf_list, aggregated_metrics['RL_Marginal_Gain'])
-    write_formatted_table(os.path.join(output_dir, "RL_Zeta05_Gain_table.csv"), 'RL_Zeta05_Gain', tf_list, aggregated_metrics['RL_Zeta05_Gain'])
+    
+    # Export Minimum Zeta Tables
+    write_formatted_table(os.path.join(output_dir, "RL_Min_Zeta_Gain_table.csv"), 'RL_Min_Zeta_Gain', tf_list, aggregated_metrics['RL_Min_Zeta_Gain'])
+    write_formatted_table(os.path.join(output_dir, "RL_Min_Zeta_Value_table.csv"), 'RL_Min_Zeta_Value', tf_list, aggregated_metrics['RL_Min_Zeta_Value'])
     
     print(f"Simulation Complete. Processed {len(tf_list)} transfer functions.")
 
