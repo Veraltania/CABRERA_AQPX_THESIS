@@ -5,7 +5,7 @@ import os
 # ─────────────────────────────────────────────
 # Tuning parameter
 # ─────────────────────────────────────────────
-DAMPING_RATIO = 1      
+DAMPING_RATIO_TARGET = 1      
 
 # ─────────────────────────────────────────────
 # Open-loop plant data: (label, Kp, tau, theta)
@@ -28,16 +28,8 @@ plant_data = [
 ]
 
 # ─────────────────────────────────────────────
-# Compute Kc and Ki
+# Compute Kc, Ki, and Damping Ratio (Zeta)
 # ─────────────────────────────────────────────
-# Lambda tuning rules:
-#   Lambda = tau,  Ti = tau
-#   Kc = tau / (Kp * (Lambda + theta))
-#        → Kc = tau / (Kp * (tau + theta))
-#
-# Ki (from pole-placement / desired damping):
-#   Ki = (tau / Kp) * sqrt( (1 + Kc*Kp) / (2 * ζ * tau) )
-
 results = []
 
 for label, Kp, tau, theta in plant_data:
@@ -45,15 +37,25 @@ for label, Kp, tau, theta in plant_data:
         print(f"Warning: Skipping '{label}' — Kp is 0.")
         continue
 
-    lb = tau*3
+    # Lambda parameter 
+    lb = tau * 3
+    
     # Proportional gain
     Kc = tau / (Kp * (lb + theta))
 
-    # integral gain
-    Ki = math.sqrt(1 + Kc * Kp) / (Kp * tau)
+    # Integral gain
+    Ki = Kc / tau
+    # Ki = ((1 + Kp * Kc)**2) / (4 * Kp * tau)
 
-    results.append((label, Kp, tau, theta, Kc, Ki))
+    # Calculated Damping Ratio (Zeta)
 
+    zeta = (1 + Kp * Kc) / (2 * math.sqrt(Kp * Ki * tau))
+
+    results.append((label, Kp, tau, theta, Kc, Ki, zeta))
+
+# ─────────────────────────────────────────────
+# Display Results
+# ─────────────────────────────────────────────
 col_w = {
     "label": 12,
     "Kp":    10,
@@ -61,6 +63,7 @@ col_w = {
     "theta": 10,
     "Kc":    12,
     "Ki":    14,
+    "zeta":  10,
 }
 
 header = (
@@ -69,44 +72,43 @@ header = (
     f"{'tau':>{col_w['tau']}} "
     f"{'theta':>{col_w['theta']}} "
     f"{'Kc':>{col_w['Kc']}} "
-    f"{'Ki':>{col_w['Ki']}}"
+    f"{'Ki':>{col_w['Ki']}} "
+    f"{'Zeta':>{col_w['zeta']}}"
 )
 
 separator = "-" * len(header)
 
 print()
-print(f"  Lambda Tuning Results  (damping ratio ζ = {DAMPING_RATIO})")
+print(f"  Lambda Tuning Results with Damping Ratio Verification")
 print(separator)
 print(header)
 print(separator)
 
-for label, Kp, tau, theta, Kc, Ki in results:
+for label, Kp, tau, theta, Kc, Ki, zeta in results:
     print(
         f"{label:<{col_w['label']}} "
         f"{Kp:>{col_w['Kp']}.4f} "
         f"{tau:>{col_w['tau']}.3f} "
         f"{theta:>{col_w['theta']}.3f} "
         f"{Kc:>{col_w['Kc']}.6f} "
-        f"{Ki:>{col_w['Ki']}.6f}"
+        f"{Ki:>{col_w['Ki']}.6f} "
+        f"{zeta:>{col_w['zeta']}.4f}"
     )
 
 print(separator)
-print()
-print(f"  Kc formula : Kc = tau / (Kp * (tau + theta))")
-print(f"  Ki formula : Ki = (tau / Kp) * sqrt( (1 + Kc*Kp) / (2 * ζ * tau) )")
+print(f"  Zeta formula: (1 + Kc*Kp) / sqrt(2 * tau * Kc * Ki)")
 print()
 
 # ─────────────────────────────────────────────
 # Export to CSV
 # ─────────────────────────────────────────────
-# Determine the absolute path of the directory containing this script
 script_dir = os.path.dirname(os.path.abspath(__file__))
 csv_filename = os.path.join(script_dir, "lambda_tuning_results.csv")
 
 with open(csv_filename, mode="w", newline="") as csv_file:
     writer = csv.writer(csv_file)
     # Write the header row
-    writer.writerow(["Label", "Kp", "tau", "theta", "Kc", "Ki"])
+    writer.writerow(["Label", "Kp", "tau", "theta", "Kc", "Ki", "Zeta"])
     
     # Write the data rows
     for row in results:
