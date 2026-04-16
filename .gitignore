@@ -28,6 +28,7 @@ aqpx_neo/
 aqpx_neo_mac/
 Transfer_Function_Modeling/data_calibrated/
 Transfer_Function_Modeling/data/
+Overleaf/
 
 # ignore specific files
 *sim-do_state.csv

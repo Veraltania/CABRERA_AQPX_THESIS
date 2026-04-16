@@ -136,8 +136,8 @@ def write_tradeoff_table(output_path, tf_name, sweep_results):
 
 def main():
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    input_csv = os.path.join(base_dir, "tf_parameters_do.csv")
-    output_dir = os.path.join(base_dir, "simulation_graphs_ce_sweep_do_wide_range")
+    input_csv = os.path.join(base_dir, "tf_parameters_tds.csv")
+    output_dir = os.path.join(base_dir, "simulation_graphs_ce_sweep_tds_wide_range")
     os.makedirs(output_dir, exist_ok=True)
     
     tf_list = read_tf_parameters(input_csv)
@@ -154,7 +154,7 @@ def main():
     
     ce_weights_to_test = np.linspace(start_ce, end_ce, num_bins)
     
-    # Create normalization and colormap mapping specifically for the continuous colorbars
+    # Create normalization and colormap mapping specifically for the continuous colorbars (Step/Effort plots)
     ce_pcts_global = [(ce / 4.0) * 100.0 for ce in ce_weights_to_test]
     colormap = cm.viridis
     norm = plt.Normalize(vmin=min(ce_pcts_global), vmax=max(ce_pcts_global))
@@ -223,7 +223,7 @@ def main():
             sweep_results.append({
                 'ce': ce, 'ce_pct': ce_pct, 'kp': de_kp, 'ki': de_ki,
                 'iae': iae, 'tv': tv_effort, 'rt': rt, 'os': os_pct,
-                'y': y_out, 'u': u_out, 'color': colormap(norm(ce_pct)) # Map color perfectly to CE%
+                'y': y_out, 'u': u_out, 'color': colormap(norm(ce_pct)) # Retained for time series plots
             })
 
         # 2. GENERATE TIME SERIES PLOTS
@@ -231,14 +231,14 @@ def main():
         fig_y, ax_y = plt.subplots(figsize=(12, 6))
         ax_y.plot(t_eval_hours, setpoints, 'k--', label='Setpoint', alpha=0.6)
         for res in sweep_results:
-            ax_y.plot(t_eval_hours, res['y'], color=res['color']) # Removed discrete label
+            ax_y.plot(t_eval_hours, res['y'], color=res['color']) 
             
         ax_y.set_title(f'Step Response Sweep', fontsize=fontsize)
         ax_y.set_xlabel('Time (hours)', fontsize=fontsize)
         ax_y.set_ylabel('System Output', fontsize=fontsize)
         ax_y.grid(True, alpha=0.3)
         
-        # Add colorbar instead of legend
+        # Add colorbar
         cbar_y = fig_y.colorbar(sm, ax=ax_y)
         cbar_y.set_label('Control Effort Weight (%)', rotation=270, labelpad=20, fontsize=fontsize-2)
         
@@ -249,7 +249,7 @@ def main():
         # Plot B: Control Effort Overlay
         fig_u, ax_u = plt.subplots(figsize=(12, 6))
         for res in sweep_results:
-            ax_u.plot(t_eval_hours, res['u'], color=res['color']) # Removed discrete label
+            ax_u.plot(t_eval_hours, res['u'], color=res['color']) 
             
         ax_u.set_title(f'Control Effort Sweep', fontsize=fontsize)
         ax_u.set_xlabel('Time (hours)', fontsize=fontsize)
@@ -257,7 +257,7 @@ def main():
         ax_u.set_ylim(-0.1, 1.1) 
         ax_u.grid(True, alpha=0.3)
         
-        # Add colorbar instead of legend
+        # Add colorbar
         cbar_u = fig_u.colorbar(sm, ax=ax_u)
         cbar_u.set_label('Control Effort Weight (%)', rotation=270, labelpad=20, fontsize=fontsize-2)
 
@@ -274,14 +274,14 @@ def main():
         # Define the three tradeoffs to plot
         tradeoff_configs = [
             ('iae', iaes, 'Integral Absolute Error (IAE)', 'IAE'),
-            ('rt', rts, 'Rise Time (hours)', 'Rise Time'),
+            ('rt', rts, 'Rise Time (seconds)', 'Rise Time'),
             ('os', oss, 'Overshoot (%)', 'Overshoot')
         ]
         
         for metric_key, y_vals, ylabel, title_name in tradeoff_configs:
             fig_p, ax_p = plt.subplots(figsize=(10, 8))
             
-            # Sort for clean connecting lines (Using ce_pcts instead of tvs_pct)
+            # Sort for clean connecting lines
             sort_indices = np.argsort(ce_pcts)
             x_sorted = np.array(ce_pcts)[sort_indices]
             y_sorted = np.array(y_vals)[sort_indices]
@@ -289,23 +289,20 @@ def main():
             # Connecting line
             ax_p.plot(x_sorted, y_sorted, 'k-', alpha=0.3, zorder=1) 
             
-            # Linear Fit (Using ce_pcts instead of tvs_pct)
+            # Linear Fit
             z = np.polyfit(ce_pcts, y_vals, 1)
             p = np.poly1d(z)
 
-            # Scatter points (Using ce_pcts for x-axis to match labels and colorbars!)
-            scatter = ax_p.scatter(ce_pcts, y_vals, c=ce_pcts, cmap=colormap, norm=norm, s=100, zorder=3)
+            # Scatter points (Removed color mapping, made a solid blue color)
+            scatter = ax_p.scatter(ce_pcts, y_vals, color='tab:blue', s=100, zorder=3)
             
             ax_p.set_title(f'Trade-off: {title_name} vs %CE', fontsize=fontsize)
             ax_p.set_xlabel('Control Effort Weight (%)', fontsize=fontsize)
             ax_p.set_ylabel(ylabel, fontsize=fontsize)
             
-            # Ensure X-axis always starts at 0
-            ax_p.set_xlim(left=0) 
+            # Ensure X-axis scales from 0 to 100
+            ax_p.set_xlim(0, 100) 
             ax_p.grid(True, alpha=0.3)
-            
-            cbar = plt.colorbar(scatter, ax=ax_p)
-            cbar.set_label('Control Effort Weight (%)', rotation=270, labelpad=20)
             
             fig_p.tight_layout()
             fig_p.savefig(os.path.join(output_dir, f"tradeoff_{metric_key}_{tf_name}.png"))
