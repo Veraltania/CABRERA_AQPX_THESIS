@@ -1,4 +1,0 @@
-Contrast,A,B,Paired,Parametric,T,dof,alternative,p-unc,p-corr,p-adjust,BF10,hedges
-Group,DE-tuned,Lambda-tuned ($\lambda$ = 3$\tau$),True,True,15.918,2.0,two-sided,0.0039,0.0078,holm,10.506,4.1336
-Group,DE-tuned,"MATLAB pidtune(), balanced",True,True,28.3453,2.0,two-sided,0.0012,0.0037,holm,19.086,1.5748
-Group,Lambda-tuned ($\lambda$ = 3$\tau$),"MATLAB pidtune(), balanced",True,True,-6.3713,2.0,two-sided,0.0238,0.0238,holm,3.946,-1.8979
