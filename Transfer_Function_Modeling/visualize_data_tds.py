@@ -72,11 +72,12 @@ def plot_tds_experiment_pairs(base_dirs, dates, factor,
         # =========================================================
         # Broken Y-Axis Plotting Logic (Image Style)
         # =========================================================
-        # Create two subplots sharing the X-axis.
+        # Create two subplots sharing the X-axis. 
+        # Width set to 7.16 inches.
         fig, (ax1, ax2) = plt.subplots(
             2, 1,
             sharex=True,
-            figsize=(12, 6),
+            figsize=(7.16, 5),
             gridspec_kw={'height_ratios': [4, 1]}
         )
 
@@ -104,9 +105,9 @@ def plot_tds_experiment_pairs(base_dirs, dates, factor,
 
         # Adjust tick placement so they don't overlap the break and set font size
         ax1.xaxis.tick_top()
-        ax1.tick_params(axis='both', labeltop=False, labelsize=16)  # Keep top labels hidden, set y-axis font size
+        ax1.tick_params(axis='both', labeltop=False, labelsize=12)  # Keep top labels hidden, set y-axis font size
         ax2.xaxis.tick_bottom()
-        ax2.tick_params(axis='both', labelsize=16) # Set x and y-axis font size
+        ax2.tick_params(axis='both', labelsize=12) # Set x and y-axis font size
 
         # Add the thick, dashed red lines indicating the break
         # Places a line at the bottom of the top plot, and top of the bottom plot
@@ -116,12 +117,12 @@ def plot_tds_experiment_pairs(base_dirs, dates, factor,
         # =========================================================
         # Formatting & Labels
         # =========================================================
-        ax2.set_xlabel("Datetime", fontsize=16)
-        fig.supylabel(data_name, fontsize=16)  # Shared Y-axis label
+        ax2.set_xlabel("Datetime", fontsize=12)
+        fig.supylabel(data_name, fontsize=12)  # Shared Y-axis label
 
         # Title specific to the pair
         start_date_str = window_start.strftime('%b %d')
-        ax1.set_title(f"{data_name} vs Time - Phase Pair {idx + 1} ({start_date_str})", fontsize=16, pad=15)
+        ax1.set_title(f"{data_name} vs Time - Phase Pair {idx + 1} ({start_date_str})", fontsize=12, pad=15)
 
         # Format the X-axis for clearer multi-day viewing (e.g., every 4 hours to reduce clutter)
         ax2.xaxis.set_major_locator(mdates.HourLocator(interval=4))
@@ -130,17 +131,25 @@ def plot_tds_experiment_pairs(base_dirs, dates, factor,
         # Rotate x-axis labels on the bottom plot
         plt.setp(ax2.xaxis.get_majorticklabels(), rotation=45)
 
-        # Handle legend to avoid duplicate entries from plotting on two axes
+        # Put legend outside the bounds, at the bottom of the lower axis (ax2)
         handles, labels = ax1.get_legend_handles_labels()
         unique_labels = dict(zip(labels, handles))
-        ax1.legend(unique_labels.values(), unique_labels.keys(), loc="upper left", fontsize=16)
+        ax2.legend(unique_labels.values(), unique_labels.keys(), 
+                   loc="upper center", bbox_to_anchor=(0.5, -0.6), 
+                   ncol=3, fontsize=12)
 
         # Grid lines (optional: turn off horizontal grids if they clash with the red dashes)
         ax1.grid(True, linestyle=':', alpha=0.6)
         ax2.grid(True, linestyle=':', alpha=0.6)
 
+        # Important to not overwrite the custom bounding box for the legend
         plt.tight_layout()
-        plt.show()
+        
+        # Save as PDF vector format (bbox_inches='tight' guarantees the legend isn't cut off)
+        output_pdf = Path(base_dirs[0]) / f"TDS_Experiment_Phase_{idx + 1}.pdf"
+        plt.savefig(output_pdf, format='pdf', bbox_inches='tight')
+        print(f"Saved plot to: {output_pdf}")
+        plt.close()
 
 
 if __name__ == '__main__':

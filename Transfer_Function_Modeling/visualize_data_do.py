@@ -33,8 +33,8 @@ def plot_data(base_dir, date_str, filename, factor,
     dtime_small = df["Datetime"].iloc[::factor]
     do_small = df[data_column].iloc[::factor]
 
-    # Plotting
-    plt.figure(figsize=(12, 4))
+    # Plotting - 7.16 inches width for vector format standard
+    plt.figure(figsize=(7.16, 4.5))
     plt.plot(dtime_small, do_small, label=label)
 
     # Standardize the y-axis from 0 to 8
@@ -46,10 +46,10 @@ def plot_data(base_dir, date_str, filename, factor,
         end_dt = pd.to_datetime(f"{date_str} {end}")
 
         # Only add the label to the legend once to avoid duplicates
-        label = "Pump Off" if idx == 0 else None
+        label_text = "Pump Off" if idx == 0 else None
 
         # Plot a red shaded region for the pump off slice
-        plt.axvspan(start_dt, end_dt, color='red', alpha=0.2, label=label)
+        plt.axvspan(start_dt, end_dt, color='red', alpha=0.2, label=label_text)
 
     # Add visual separators for "Step Response" time slices
     for idx, (start, end) in enumerate(step_response_slices):
@@ -57,14 +57,14 @@ def plot_data(base_dir, date_str, filename, factor,
         end_dt = pd.to_datetime(f"{date_str} {end}")
 
         # Only add the label to the legend once
-        label = "Step Response" if idx == 0 else None
+        label_text = "Step Response" if idx == 0 else None
 
         # Plot a green shaded region for the step response slice
-        plt.axvspan(start_dt, end_dt, color='green', alpha=0.2, label=label)
+        plt.axvspan(start_dt, end_dt, color='green', alpha=0.2, label=label_text)
 
-    plt.xlabel("Time", fontsize=16)
-    plt.ylabel(f"{data_name}", fontsize=16)
-    plt.title(f"{data_name} vs Time ({date_str})", fontsize=16)
+    plt.xlabel("Time", fontsize=12)
+    plt.ylabel(f"{data_name}", fontsize=12)
+    plt.title(f"{data_name} vs Time ({date_str})", fontsize=12)
 
     # Change to every 2 hours to reduce clutter
     plt.gca().xaxis.set_major_locator(mdates.HourLocator(interval=2))
@@ -73,11 +73,18 @@ def plot_data(base_dir, date_str, filename, factor,
     plt.xticks(rotation=45)
 
     # Set x and y-axis tick font sizes
-    plt.tick_params(axis='both', labelsize=16)
+    plt.tick_params(axis='both', labelsize=12)
 
-    plt.legend(fontsize=16)
+    # Legend outside the graph at the bottom
+    plt.legend(fontsize=12, loc='upper center', bbox_to_anchor=(0.5, -0.3), ncol=3)
+    
     plt.tight_layout()
-    plt.show()
+    
+    # Save as PDF vector format
+    output_pdf = Path(base_dir) / f"{Path(filename).stem}_DO_plot.pdf"
+    plt.savefig(output_pdf, format='pdf', bbox_inches='tight')
+    print(f"Saved plot to: {output_pdf}")
+    plt.close()
 
 
 if __name__ == '__main__':
