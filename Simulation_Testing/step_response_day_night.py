@@ -120,46 +120,53 @@ def calculate_metrics(t, y, u, sp):
 
 def plot_scenario_results(output_dir, scenario_name, t_full_hours, sp_full, shift_hour, results):
     """Generates and saves step response and control effort graphs for a specific scenario."""
-    plot_font_size = 22
+    # Font size reduced to fit the smaller 7.16-inch layout proportionally
+    plot_font_size = 10
     tick_positions = np.arange(0, 25, 3) 
     tick_labels = ['6 AM', '9 AM', '12 PM', '3 PM', '6 PM', '9 PM', '12 AM', '3 AM', '6 AM']
     
+    # Target width: 7.16 inches. Height scaled to match original 14:8 ratio (7.16 * 8/14 = 4.091)
+    fig_width = 7.16
+    fig_height = 4.09
+    
     # 1. Step Response Plot
-    plt.figure(figsize=(14, 8)) 
+    plt.figure(figsize=(fig_width, fig_height)) 
     plt.plot(t_full_hours, sp_full, 'k--', label='Reference Setpoint', alpha=0.6)
     plt.axvline(shift_hour, color='red', linestyle=':', linewidth=2, label='Day/Night Shift (6 PM)')
 
     for res in results:
         plt.plot(t_full_hours, res["y"], color=res["color"], label=f'{res["name"]} (IAE: {res["iae"]:.0f})')
         
-    plt.title(f'Day/Night Cycle Step Response ({scenario_name})', fontsize=plot_font_size, pad=20)
+    plt.title(f'Day/Night Cycle Step Response ({scenario_name})', fontsize=plot_font_size, pad=10)
     plt.xlabel("Time of Day", fontsize=plot_font_size)
     plt.ylabel('DO (mg/l)', fontsize=plot_font_size)
     plt.xticks(tick_positions, tick_labels, fontsize=plot_font_size)
     plt.yticks(fontsize=plot_font_size)
-    plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=2, fontsize=plot_font_size, borderaxespad=0.)
+    plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.2), ncol=2, fontsize=plot_font_size, borderaxespad=0.)
     plt.grid(True, alpha=0.3)
     plt.tight_layout() 
-    plt.savefig(os.path.join(output_dir, f"step_response_{scenario_name}.png"))
+    # Saved as PDF
+    plt.savefig(os.path.join(output_dir, f"step_response_{scenario_name}.pdf"), format='pdf', bbox_inches='tight')
     plt.close()
 
     # 2. Control Effort Plot
-    plt.figure(figsize=(14, 8))
+    plt.figure(figsize=(fig_width, fig_height))
     plt.axvline(shift_hour, color='red', linestyle=':', linewidth=2, label='Day/Night Shift (6 PM)')
 
     for res in results:
         plt.plot(t_full_hours, np.clip(res["u"], 0, 1), color=res["color"], label=f'{res["name"]} Effort')
         
-    plt.title(f'Day/Night Cycle Control Effort ({scenario_name})', fontsize=plot_font_size, pad=20)
+    plt.title(f'Day/Night Cycle Control Effort ({scenario_name})', fontsize=plot_font_size, pad=10)
     plt.xlabel("Time of Day", fontsize=plot_font_size)
     plt.ylabel('Control Signal', fontsize=plot_font_size)
     plt.xticks(tick_positions, tick_labels, fontsize=plot_font_size)
     plt.yticks(fontsize=plot_font_size)
     plt.ylim(-0.05, 1.1)
-    plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=2, fontsize=plot_font_size, borderaxespad=0.)
+    plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.2), ncol=2, fontsize=plot_font_size, borderaxespad=0.)
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, f"control_effort_{scenario_name}.png"))
+    # Saved as PDF
+    plt.savefig(os.path.join(output_dir, f"control_effort_{scenario_name}.pdf"), format='pdf', bbox_inches='tight')
     plt.close()
 
 # ==========================================
