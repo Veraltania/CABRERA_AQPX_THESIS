@@ -137,8 +137,8 @@ def write_formatted_table(output_path, metric_name, tfs, metrics_dict):
 
 def main():
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    input_csv = os.path.join(base_dir, "tf_parameters_tds.csv")
-    output_dir = os.path.join(base_dir, "simulation_graphs_comparison_tds_1xcf")
+    input_csv = os.path.join(base_dir, "tf_parameters_do.csv")
+    output_dir = os.path.join(base_dir, "simulation_graphs_comparison_do_1xcf")
     os.makedirs(output_dir, exist_ok=True)
     
     aggregated_metrics = {'IAE': {}, 'Control_Effort': {}, 'Rise_Time': {}, 'Overshoot': {}}
@@ -197,8 +197,9 @@ def main():
             {"name": "MATLAB pidtune(), balanced", "color": "blue", "kp": tf_data['matlab_kp'], "ki": tf_data['matlab_ki']}
         ]
 
-        fig_y, ax_y = plt.subplots(figsize=(14, 8))
-        fig_u, ax_u = plt.subplots(figsize=(14, 8))
+        # REFACTORED: 7.16 inches width with roughly 14:8 aspect ratio height 
+        fig_y, ax_y = plt.subplots(figsize=(7.16, 4.09))
+        fig_u, ax_u = plt.subplots(figsize=(7.16, 4.09))
 
         ax_y.plot(t_eval_hours, setpoints, 'k--', label='Reference Setpoint', alpha=0.6)
 
@@ -224,23 +225,25 @@ def main():
             ax_y.plot(t_eval_hours, y_out, color=cfg["color"], label=f'{cfg["name"]} (IAE: {iae:.0f})')
             ax_u.plot(t_eval_hours, u_out, color=cfg["color"], label=f'{cfg["name"]} (TV Effort: {u_aggressiveness:.4f})')
 
-        ax_y.set_title(f'Step Response Comparison', fontsize=22, pad=20)
-        ax_y.set_xlabel('Time (hours)', fontsize=18)
-        ax_y.set_ylabel('System Output', fontsize=18)
-        ax_y.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=2, fontsize=16, borderaxespad=0.)
+        # REFACTORED: Adjusted fonts, saved as PDF
+        ax_y.set_title(f'Step Response Comparison', fontsize=12, pad=12)
+        ax_y.set_xlabel('Time (hours)', fontsize=10)
+        ax_y.set_ylabel('System Output', fontsize=10)
+        ax_y.legend(loc='upper center', bbox_to_anchor=(0.5, -0.45), ncol=2, fontsize=9, borderaxespad=0.)
         ax_y.grid(True, alpha=0.3)
         fig_y.tight_layout()
-        fig_y.savefig(os.path.join(output_dir, f"step_response_{tf_name}.png"))
+        fig_y.savefig(os.path.join(output_dir, f"step_response_{tf_name}.pdf"), format='pdf', bbox_inches='tight')
         plt.close(fig_y)
         
-        ax_u.set_title(f'Control Effort Comparison', fontsize=22, pad=20)
-        ax_u.set_xlabel('Time (hours)', fontsize=18)
-        ax_u.set_ylabel('Control Signal (u)', fontsize=18)
+        # REFACTORED: Adjusted fonts, saved as PDF
+        ax_u.set_title(f'Control Effort Comparison', fontsize=12, pad=12)
+        ax_u.set_xlabel('Time (hours)', fontsize=10)
+        ax_u.set_ylabel('Control Signal (u)', fontsize=10)
         ax_u.set_ylim(-0.1, 1.1) 
-        ax_u.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=2, fontsize=16, borderaxespad=0.)
+        ax_u.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=2, fontsize=9, borderaxespad=0.)
         ax_u.grid(True, alpha=0.3)
         fig_u.tight_layout()
-        fig_u.savefig(os.path.join(output_dir, f"control_effort_{tf_name}.png"))
+        fig_u.savefig(os.path.join(output_dir, f"control_effort_{tf_name}.pdf"), format='pdf', bbox_inches='tight')
         plt.close(fig_u)
 
     print("\n--- Exporting Formatted Metric Tables ---")
