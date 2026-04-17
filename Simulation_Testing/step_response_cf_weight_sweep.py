@@ -136,8 +136,8 @@ def write_tradeoff_table(output_path, tf_name, sweep_results):
 
 def main():
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    input_csv = os.path.join(base_dir, "tf_parameters_tds.csv")
-    output_dir = os.path.join(base_dir, "simulation_graphs_ce_sweep_tds_wide_range")
+    input_csv = os.path.join(base_dir, "tf_parameters_do.csv")
+    output_dir = os.path.join(base_dir, "simulation_graphs_ce_sweep_do_wide_range_opt")
     os.makedirs(output_dir, exist_ok=True)
     
     tf_list = read_tf_parameters(input_csv)
@@ -148,6 +148,9 @@ def main():
     start_ce = 0.25      # Minimum Control Effort Weight
     end_ce = 3.75        # Maximum Control Effort Weight
     num_bins = 11        # Number of evaluations to sweep
+    
+    # Target figure width in inches (7.16 inches = 182 mm = 43 picas)
+    target_width_in = 7.16
     # ------------------------------------------
 
     fontsize = 16
@@ -227,8 +230,8 @@ def main():
             })
 
         # 2. GENERATE TIME SERIES PLOTS
-        # Plot A: Step Response Overlay
-        fig_y, ax_y = plt.subplots(figsize=(12, 6))
+        # Plot A: Step Response Overlay (Aspect ratio adjusted to maintain 2:1 roughly)
+        fig_y, ax_y = plt.subplots(figsize=(target_width_in, target_width_in / 2.0))
         ax_y.plot(t_eval_hours, setpoints, 'k--', label='Setpoint', alpha=0.6)
         for res in sweep_results:
             ax_y.plot(t_eval_hours, res['y'], color=res['color']) 
@@ -243,11 +246,11 @@ def main():
         cbar_y.set_label('Control Effort Weight (%)', rotation=270, labelpad=20, fontsize=fontsize-2)
         
         fig_y.tight_layout()
-        fig_y.savefig(os.path.join(output_dir, f"step_response_sweep_{tf_name}.png"))
+        fig_y.savefig(os.path.join(output_dir, f"step_response_sweep_{tf_name}.pdf"), format='pdf')
         plt.close(fig_y)
         
         # Plot B: Control Effort Overlay
-        fig_u, ax_u = plt.subplots(figsize=(12, 6))
+        fig_u, ax_u = plt.subplots(figsize=(target_width_in, target_width_in / 2.0))
         for res in sweep_results:
             ax_u.plot(t_eval_hours, res['u'], color=res['color']) 
             
@@ -262,7 +265,7 @@ def main():
         cbar_u.set_label('Control Effort Weight (%)', rotation=270, labelpad=20, fontsize=fontsize-2)
 
         fig_u.tight_layout()
-        fig_u.savefig(os.path.join(output_dir, f"control_effort_sweep_{tf_name}.png"))
+        fig_u.savefig(os.path.join(output_dir, f"control_effort_sweep_{tf_name}.pdf"), format='pdf')
         plt.close(fig_u)
 
         # 3. GENERATE TRADEOFF PLOTS
@@ -279,7 +282,8 @@ def main():
         ]
         
         for metric_key, y_vals, ylabel, title_name in tradeoff_configs:
-            fig_p, ax_p = plt.subplots(figsize=(10, 8))
+            # Aspect ratio adjusted to maintain the original 10x8 proportion (1.25 ratio)
+            fig_p, ax_p = plt.subplots(figsize=(target_width_in, target_width_in / 1.25))
             
             # Sort for clean connecting lines
             sort_indices = np.argsort(ce_pcts)
@@ -293,7 +297,7 @@ def main():
             z = np.polyfit(ce_pcts, y_vals, 1)
             p = np.poly1d(z)
 
-            # Scatter points (Removed color mapping, made a solid blue color)
+            # Scatter points
             scatter = ax_p.scatter(ce_pcts, y_vals, color='tab:blue', s=100, zorder=3)
             
             ax_p.set_title(f'Trade-off: {title_name} vs %CE', fontsize=fontsize)
@@ -305,7 +309,7 @@ def main():
             ax_p.grid(True, alpha=0.3)
             
             fig_p.tight_layout()
-            fig_p.savefig(os.path.join(output_dir, f"tradeoff_{metric_key}_{tf_name}.png"))
+            fig_p.savefig(os.path.join(output_dir, f"tradeoff_{metric_key}_{tf_name}.pdf"), format='pdf')
             plt.close(fig_p)
 
         # 4. EXPORT METRICS TO CSV

@@ -11,7 +11,7 @@ from scipy_de_tuner import run_scipy_de_tuner
 # ==========================================
 
 # Set one unified font size for all titles, labels, and legends
-GLOBAL_FONT_SIZE = 18
+GLOBAL_FONT_SIZE = 14
 
 # ==========================================
 # 1. PLANT CREATION
@@ -86,8 +86,8 @@ def write_formatted_table(output_path, metric_name, tfs, metrics_dict):
 
 def main():
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    input_csv = os.path.join(base_dir, "tf_parameters_do.csv")
-    output_dir = os.path.join(base_dir, "simulation_graphs_disturbance_do")
+    input_csv = os.path.join(base_dir, "tf_parameters_tds.csv")
+    output_dir = os.path.join(base_dir, "simulation_graphs_disturbance_tds")
     os.makedirs(output_dir, exist_ok=True)
     
     aggregated_metrics = {'IAE': {}, 'Control_Effort_AUC': {}}
@@ -134,9 +134,10 @@ def main():
             {"name": "MATLAB pidtune(), balanced", "color": "blue", "kp": tf_data['matlab_kp'], "ki": tf_data['matlab_ki']}
         ]
 
-        # Create two separate figures
-        fig_y, ax_y = plt.subplots(figsize=(10, 6))
-        fig_u, ax_u = plt.subplots(figsize=(10, 6))
+        # Create two separate figures 
+        # Width set to 7.16 inches. Height set to 4.3 to maintain approximate 10:6 aspect ratio
+        fig_y, ax_y = plt.subplots(figsize=(7.16, 4.3))
+        fig_u, ax_u = plt.subplots(figsize=(7.16, 4.3))
         
         fig_y.canvas.manager.set_window_title(f'Process Output - {tf_name}')
         fig_u.canvas.manager.set_window_title(f'Control Effort - {tf_name}')
@@ -164,25 +165,27 @@ def main():
         # --- Figure 1: Load Disturbance Rejection ---
         ax_y.plot([0, t_final], [0, 0], 'k--', linewidth=1.2, label='Ideal State = 0')
         ax_y.set_title('Load Disturbance Rejection Response', fontsize=GLOBAL_FONT_SIZE)
-        ax_y.set_xlabel('Time', fontsize=GLOBAL_FONT_SIZE)
+        ax_y.set_xlabel('Time (s)', fontsize=GLOBAL_FONT_SIZE)
         ax_y.set_ylabel('Process Output (y)', fontsize=GLOBAL_FONT_SIZE)
-        ax_y.legend(loc='best', fontsize=GLOBAL_FONT_SIZE)
+        ax_y.legend(loc='upper center', bbox_to_anchor=(0.5, -0.45), fontsize=GLOBAL_FONT_SIZE)
         ax_y.grid(True, alpha=0.5)
         
         fig_y.tight_layout()
-        fig_y.savefig(os.path.join(output_dir, f"load_disturbance_y_{tf_name}.png"))
+        # Changed to .pdf and explicitly specified the format
+        fig_y.savefig(os.path.join(output_dir, f"load_disturbance_y_{tf_name}.pdf"), format='pdf', bbox_inches='tight')
         plt.close(fig_y)
 
         # --- Figure 2: Control Effort ---
         ax_u.plot([0, t_final], [0, 0], 'k--', linewidth=1.2, label='Ideal State = 0')
         ax_u.set_title('Control Effort Response', fontsize=GLOBAL_FONT_SIZE)
-        ax_u.set_xlabel('Time', fontsize=GLOBAL_FONT_SIZE)
+        ax_u.set_xlabel('Time (s)', fontsize=GLOBAL_FONT_SIZE)
         ax_u.set_ylabel('Control Effort (u)', fontsize=GLOBAL_FONT_SIZE)
         ax_u.legend(loc='best', fontsize=GLOBAL_FONT_SIZE)
         ax_u.grid(True, alpha=0.5)
 
         fig_u.tight_layout()
-        fig_u.savefig(os.path.join(output_dir, f"load_disturbance_u_{tf_name}.png"))
+        # Changed to .pdf and explicitly specified the format
+        fig_u.savefig(os.path.join(output_dir, f"load_disturbance_u_{tf_name}.pdf"), format='pdf', bbox_inches='tight')
         plt.close(fig_u)
 
     print("\n--- Exporting Formatted Metric Tables ---")
