@@ -1,183 +1,138 @@
 import os
 import pandas as pd
-import math
 import matplotlib.pyplot as plt
 from pathlib import Path
 
-def generate_broken_axis_replots():
-    # --- Configuration ---
-    BASE_DATA_DIR = Path("Evolutionary_Algorithm_Testing/population_sweep/BATCH_OPENLOOP")
-    START_POP = 10
-    END_POP = 100
-    STEP_SIZE = 10
-    TARGET_ROUND = 50 # Default from your shared config
-    
-    ALGO_MAP = ['DE', 'GA', 'PSO']
+def generate_pdf_plot(base_dir, pop_size, target_round, target_max_iter):
+    """
+    Reads algorithm cost history CSVs and generates a broken y-axis plot in PDF format.
+    """
+    base_dir = Path(base_dir)
+    if not base_dir.exists():
+        print(f"Error: Directory '{base_dir}' does not exist.")
+        return
+
+    algorithms = ['DE', 'GA', 'PSO']
     color_map = {'DE': '#1f77b4', 'GA': '#ff7f0e', 'PSO': '#2ca02c'}
+    loaded_data = {}
 
-    if not BASE_DATA_DIR.exists():
-        print(f"CRITICAL ERROR: Directory {BASE_DATA_DIR} not found.")
-        print("Please run this script in the directory containing BATCH_DO_OPENLOOP.")
-        return
-
-    # Find all Transfer Function directories inside BATCH_DO_OPENLOOP
-    # Filtering out files to only get directories (e.g., population_sweep_do_feb5_daytime)
-    tf_dirs = [d for d in BASE_DATA_DIR.iterdir() if d.is_dir()]
+    print(f"Scanning directory: {base_dir}")
     
-    if not tf_dirs:
-        print(f"No transfer function directories found inside {BASE_DATA_DIR}.")
+    # 1. Load Data
+    for algo in algorithms:
+        # Matches the folder structure from your sweep script
+        algo_dir = base_dir / algo / f"pop_{pop_size}"
+        history_file = algo_dir / f"raw_cost_history_round_{target_round:03d}.csv"
+
+        if history_file.exists():
+            try:
+                df_hist = pd.read_csv(history_file)
+                # Filter up to target maximum iteration
+                df_hist = df_hist[df_hist['Iteration'] <= target_max_iter]
+                if not df_hist.empty:
+                    loaded_data[algo] = df_hist
+                    print(f"  -> Loaded data for {algo}")
+            except Exception as e:
+                print(f"  -> Failed to load {algo} pop {pop_size}: {e}")
+        else:
+            print(f"  -> Missing file for {algo}: {history_file}")
+
+    if not loaded_data:
+        print("No valid data found. Exiting.")
         return
 
-    pop_sizes = list(range(START_POP, END_POP + 1, STEP_SIZE))
-    if pop_sizes[-1] != END_POP: pop_sizes.append(END_POP)
+    # 2. Find valid cost ranges to setup the split zoom
+    min_valid_cost = float('inf')
+    max_valid_cost = 0.0
+    for algo, df_hist in loaded_data.items():
+        valid_costs = df_hist['Cost'][df_hist['Cost'] < 1e8]
+        if not valid_costs.empty:
+            min_valid_cost = min(min_valid_cost, valid_costs.min())
+            max_valid_cost = max(max_valid_cost, valid_costs.max())
 
-    for tf_dir in tf_dirs:
-        tf_name = tf_dir.name
-        print(f"\n{'='*60}")
-        print(f"PROCESSING TRANSFER FUNCTION: {tf_name}")
-        print(f"{'='*60}")
-        
-        for pop_size in pop_sizes:
-            loaded_data = {}
-            max_iter_found = 0
-            
-            # --- Load Data from raw_cost_history_round_xxx.csv ---
-            for algo in ALGO_MAP:
-                algo_dir = tf_dir / algo / f"pop_{pop_size}"
-                
-                # Check for the history files
-                history_files = list(algo_dir.glob("raw_cost_history_round_*.csv"))
-                
-                if history_files:
-                    # Get the file for the highest round available (usually 050)
-                    history_file = max(history_files, key=lambda p: int(p.stem.split('_')[-1]))
-                    try:
-                        df_hist = pd.read_csv(history_file)
-                        loaded_data[algo] = df_hist
-                        current_max = df_hist['Iteration'].max()
-                        if current_max > max_iter_found:
-                            max_iter_found = current_max
-                    except Exception as e:
-                        print(f"  -> Failed to load {history_file}: {e}")
-            
-            if not loaded_data:
-                # No data for this population size, skip smoothly
-                continue
-                
-            target_max_iter = max(50, int(max_iter_found))
-            
-            # --- Pad Early Stopping Data ---
-            all_costs = []
-            for algo, df_hist in loaded_data.items():
-                last_iter = df_hist['Iteration'].iloc[-1]
-                last_cost = df_hist['Cost'].iloc[-1]
+    if min_valid_cost == float('inf'):
+        print("No valid costs (< 1e8) found to plot.")
+        return
 
-                if last_iter < target_max_iter:
-                    pad_iters = list(range(int(last_iter) + 1, target_max_iter + 1))
-                    pad_costs = [last_cost] * len(pad_iters)
-                    pad_df = pd.DataFrame({'Iteration': pad_iters, 'Cost': pad_costs})
-                    
-                    # Concat and update dictionary
-                    loaded_data[algo] = pd.concat([df_hist, pad_df], ignore_index=True)
-                
-                all_costs.extend(loaded_data[algo]['Cost'].tolist())
+    # Setup broken axis (top: zoom range, bottom: anchors to 0)
+    fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True, figsize=(10, 6), gridspec_kw={'height_ratios': [4, 1]})
+    fig.subplots_adjust(hspace=0.08)
 
-            # --- Calculate Dynamic Boundaries ---
-            global_min_cost = min(all_costs)
-            global_max_cost = max(all_costs)
-            
-            floor_min = math.floor(global_min_cost / 10) * 10
-            ceil_max = math.ceil(global_max_cost / 10) * 10
-            
-            # Catch edge case where min and max are in the same 10-unit bracket
-            if floor_min >= ceil_max:
-                ceil_max = floor_min + 10
-                floor_min -= 10
+    # 3. Plot Data on both axes
+    for algo, df_hist in loaded_data.items():
+        last_iter = df_hist['Iteration'].iloc[-1]
+        last_cost = df_hist['Cost'].iloc[-1]
 
-            # Only break the axis if the minimum cost is significantly above 0
-            needs_broken_axis = floor_min > 15
-            
-            plot_path = tf_dir / f'combined_cost_history_pop_{pop_size:03d}_broken_y.png'
-            
-            # --- Plotting: Broken Y-Axis (Image Style) ---
-            if needs_broken_axis:
-                y_top_zoom = (floor_min, ceil_max)
-                y_bottom_zoom = (0, 10) # Fixed lower bound starting at 0
-                
-                fig, (ax1, ax2) = plt.subplots(
-                    2, 1,
-                    sharex=True,
-                    figsize=(10, 6),
-                    gridspec_kw={'height_ratios': [4, 1]}
-                )
-                fig.subplots_adjust(hspace=0.15)
-                
-                for algo, df_hist in loaded_data.items():
-                    last_cost = df_hist['Cost'].iloc[-1]
-                    color = color_map.get(algo, 'black')
-                    lbl = f"{algo} (Final Cost: {last_cost:.2f})"
-                    
-                    # Plot on both axes
-                    ax1.plot(df_hist['Iteration'], df_hist['Cost'], linewidth=2.5, color=color, label=lbl)
-                    ax2.plot(df_hist['Iteration'], df_hist['Cost'], linewidth=2.5, color=color)
-                
-                # Setup boundaries
-                ax1.set_ylim(*y_top_zoom)
-                ax2.set_ylim(*y_bottom_zoom)
-                ax1.set_xlim(0, target_max_iter)
-                ax2.set_xlim(0, target_max_iter)
+        # Pad iterations if the algorithm converged early
+        if last_iter < target_max_iter:
+            pad_iters = list(range(int(last_iter) + 1, target_max_iter + 1))
+            pad_df = pd.DataFrame({'Iteration': pad_iters, 'Cost': [last_cost] * len(pad_iters)})
+            df_hist = pd.concat([df_hist, pad_df], ignore_index=True)
 
-                # Hide the spines between ax1 and ax2
-                ax1.spines['bottom'].set_visible(False)
-                ax2.spines['top'].set_visible(False)
-                
-                # Move ticks
-                ax1.xaxis.tick_top()
-                ax1.tick_params(axis='both', labeltop=False, labelsize=12)
-                ax2.xaxis.tick_bottom()
-                ax2.tick_params(axis='both', labelsize=12)
+        # Plot on Top
+        ax1.plot(df_hist['Iteration'], df_hist['Cost'], linewidth=2.5, 
+                 color=color_map.get(algo, 'black'), label=f"{algo} (Final Cost: {last_cost:.4f})")
+        # Plot on Bottom
+        ax2.plot(df_hist['Iteration'], df_hist['Cost'], linewidth=2.5, color=color_map.get(algo, 'black'))
 
-                # Add dashed red lines for the break
-                ax1.axhline(y=y_top_zoom[0], color='red', linestyle='--', linewidth=2.0, zorder=10)
-                ax2.axhline(y=y_bottom_zoom[1], color='red', linestyle='--', linewidth=2.0, zorder=10)
+    # Determine the zoomed range for the top graph
+    y_margin = (max_valid_cost - min_valid_cost) * 0.1 if max_valid_cost > min_valid_cost else min_valid_cost * 0.1
+    if y_margin == 0: 
+        y_margin = 0.1
+    
+    top_min = min_valid_cost - y_margin
+    if top_min <= 0:
+        top_min = min_valid_cost * 0.5 # Force a break margin if it naturally drops to 0
 
-                # Labels
-                ax2.set_xlabel("Iteration", fontsize=16)
-                fig.supylabel("Cost", fontsize=16)
+    ax1.set_ylim(top_min, max_valid_cost + y_margin)
+    ax2.set_ylim(0, top_min * 0.15) # Only show the absolute bottom near 0
 
-                title_str = f'Algorithm Comparison: Cost Convergence - Pop {pop_size}\n(Round {TARGET_ROUND} | {tf_name})'
-                ax1.set_title(title_str, fontsize=16, fontweight='bold', pad=15)
-                ax1.legend(loc='upper right', fontsize=14)
-                
-                ax1.grid(True, linestyle=':', alpha=0.6)
-                ax2.grid(True, linestyle=':', alpha=0.6)
+    # Hide the spines bridging the gap
+    ax1.spines['bottom'].set_visible(False)
+    ax2.spines['top'].set_visible(False)
+    ax1.xaxis.tick_top()
+    ax1.tick_params(labeltop=False, bottom=False) 
+    ax2.xaxis.tick_bottom()
 
-                plt.tight_layout()
-                plt.savefig(plot_path, dpi=300)
-                plt.close()
-                print(f"  -> Saved broken-axis replot: {plot_path.name}")
-                
-            # --- Plotting: Standard Plot (If cost reaches ~0 natively) ---
-            else:
-                plt.figure(figsize=(10, 6))
-                for algo, df_hist in loaded_data.items():
-                    last_cost = df_hist['Cost'].iloc[-1]
-                    color = color_map.get(algo, 'black')
-                    lbl = f"{algo} (Final Cost: {last_cost:.2f})"
-                    plt.plot(df_hist['Iteration'], df_hist['Cost'], linewidth=2.5, color=color, label=lbl)
+    # Add the two red, dotted lines for the break effect
+    ax1.axhline(ax1.get_ylim()[0], color='red', linestyle=':', linewidth=2.5)
+    ax2.axhline(ax2.get_ylim()[1], color='red', linestyle=':', linewidth=2.5)
 
-                plt.title(f'Algorithm Comparison: Cost Convergence - Pop {pop_size}\n(Round {TARGET_ROUND} | {tf_name})',
-                          fontsize=16, fontweight='bold')
-                plt.ylabel('Cost', fontsize=16)
-                plt.xlabel('Iteration', fontsize=16)
-                plt.xlim(0, target_max_iter) 
-                plt.grid(True, which='both', linestyle=':', linewidth=0.7)
-                plt.legend(loc='upper right', fontsize=14)
+    # Styling
+    ax1.set_title(f'Cost Convergence Comparison of DE, PSO, and GA', fontsize=14, fontweight='bold')
+    ax2.set_xlabel('Iteration', fontsize=12)
+    fig.text(0.04, 0.5, 'Cost', va='center', rotation='vertical', fontsize=12)
+    
+    ax1.set_xlim(0, target_max_iter)
+    ax2.set_xlim(0, target_max_iter)
+    
+    ax1.grid(True, which='both', linestyle=':', linewidth=0.7)
+    ax2.grid(True, which='both', linestyle=':', linewidth=0.7)
+    ax1.legend(loc='upper right', fontsize=11)
 
-                plt.tight_layout()
-                plt.savefig(plot_path, dpi=300)
-                plt.close()
-                print(f"  -> Saved standard replot (data near 0): {plot_path.name}")
+    # Save as Vector Graphic (PDF)
+    output_filename = base_dir / f'vector_cost_history_pop_{pop_size:03d}.pdf'
+    plt.savefig(output_filename, format='pdf', dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    print(f"\nSuccess! PDF saved to: {output_filename}")
+
 
 if __name__ == "__main__":
-    generate_broken_axis_replots()
+    # ==========================================
+    # --- EDIT YOUR VARIABLES DIRECTLY BELOW ---
+    # ==========================================
+    
+    TARGET_DIR = "Evolutionary_Algorithm_Testing/population_sweep/BATCH_OPENLOOP_CONTROL_EFFORT/population_sweep_tds_feb09_10"
+    POPULATION_SIZE = 50
+    TARGET_ROUND = 50
+    MAX_ITERATIONS = 50
+
+    # ==========================================
+    
+    generate_pdf_plot(
+        base_dir=TARGET_DIR, 
+        pop_size=POPULATION_SIZE, 
+        target_round=TARGET_ROUND, 
+        target_max_iter=MAX_ITERATIONS
+    )

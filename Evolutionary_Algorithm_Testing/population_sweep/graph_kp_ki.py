@@ -103,18 +103,17 @@ def generate_scatterplot(df, x_col, y_col, category, is_average, output_dir):
     palette = DO_PALETTE if category == "DO" else TDS_PALETTE
 
     # Filter out any legend labels in our hue_order that don't actually exist in the current DataFrame
-    # (Prevents Seaborn from plotting empty legend entries)
     active_labels = df["Transfer Function"].unique()
     valid_hue_order = [label for label in hue_order if label in active_labels]
 
-    # Set font sizes for visibility
-    plt.rcParams.update({'font.size': 16})
+    # Set base font sizes scaled down for the smaller 7.16-inch width
+    plt.rcParams.update({'font.size': 10})
 
-    # Set up the plot area
-    fig, ax = plt.subplots(figsize=(14, 9))
+    # Set up the plot area with EXACT 7.16 inch width (height is proportionally estimated to 4.5 inches)
+    fig, ax = plt.subplots(figsize=(7.16, 4.5))
 
-    # Increased sizes for better visibility
-    marker_size = 400 if is_average else 150
+    # Scaled down marker sizes for smaller canvas
+    marker_size = 120 if is_average else 40
     alpha_val = 1.0 if is_average else 0.6
 
     # Create the scatter plot
@@ -131,10 +130,10 @@ def generate_scatterplot(df, x_col, y_col, category, is_average, output_dir):
         ax=ax
     )
 
-    # Label the axes
-    ax.set_xlabel(x_col, fontweight='bold', fontsize=20)
-    ax.set_ylabel(y_col, fontweight='bold', fontsize=20)
-    ax.set_title(f"DE-tuned{plot_type} Gain Distribution", fontsize=20, fontweight='bold', pad=30)
+    # Label the axes with proportional font sizes
+    ax.set_xlabel(x_col, fontweight='bold', fontsize=11)
+    ax.set_ylabel(y_col, fontweight='bold', fontsize=11)
+    ax.set_title(f"DE-tuned {plot_type} Gain Distribution", fontsize=12, fontweight='bold', pad=15)
 
     # Ensure axes start at 0 (Accounting for negative reverse-acting gains in TDS)
     x_min, x_max = ax.get_xlim()
@@ -153,16 +152,24 @@ def generate_scatterplot(df, x_col, y_col, category, is_average, output_dir):
     # Add a grid
     ax.grid(True, linestyle='--', alpha=0.5)
 
-    # Force the legend and its placement to ensure visibility and prevent overlap
-    legend = ax.legend(title="Transfer Function", loc='center left', bbox_to_anchor=(1.02, 0.5), title_fontsize=20, fontsize=20)
-    legend.get_title().set_fontsize('20')
+    # Put the legend outside the graph on the right side
+    legend = ax.legend(
+        title="Transfer Function", 
+        loc='center left', 
+        bbox_to_anchor=(1.02, 0.5), # Pushes it outside the right edge
+        title_fontsize=11, 
+        fontsize=10,
+        frameon=True
+    )
+    legend.get_title().set_fontweight('bold')
 
-    # Dynamic filename
+    # Dynamic filename with .pdf extension
     suffix = "average" if is_average else "raw"
-    filename = f"de_{suffix}_kp_ki_pop50_{category.lower()}_scatter.png"
+    filename = f"de_{suffix}_kp_ki_pop50_{category.lower()}_scatter.pdf"
     plot_path = os.path.join(output_dir, filename)
     
-    plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+    # Save as PDF vector graphic, tight bbox ensures the external legend isn't cut off
+    plt.savefig(plot_path, format='pdf', dpi=300, bbox_inches='tight')
     plt.close()
     print(f" -> Saved: {plot_path}")
 
