@@ -13,7 +13,7 @@ from scipy_de_tuner import run_scipy_de_tuner
 plt.rcParams.update({
     "font.family": "serif",
     "font.serif": ["Times New Roman"],
-    "font.size": 10
+    "font.size": 14
 })
 
 # ==========================================
@@ -171,7 +171,7 @@ def main():
         ax_y.set_ylabel('Process Output (y)')
         ax_y.legend(
             loc='best', 
-            fontsize=8, 
+            fontsize=12, 
             labelspacing=0.3,   # Reduces vertical space between items
             handlelength=1.5,   # Makes the colored line segments shorter
             handletextpad=0.4,  # Reduces space between the line and the text

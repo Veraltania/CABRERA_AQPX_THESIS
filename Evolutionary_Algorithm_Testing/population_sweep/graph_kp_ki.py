@@ -106,11 +106,10 @@ def generate_scatterplot(df, x_col, y_col, category, is_average, output_dir):
     active_labels = df["Transfer Function"].unique()
     valid_hue_order = [label for label in hue_order if label in active_labels]
 
-    # Set Times New Roman and font size 14 globally
     plt.rcParams.update({
         'font.family': 'serif',
         'font.serif': ['Times New Roman'],
-        'font.size': 14
+        'font.size': 16
     })
 
     # Set up the plot area with EXACT 7.16 inch width (height is proportionally estimated to 4.5 inches)

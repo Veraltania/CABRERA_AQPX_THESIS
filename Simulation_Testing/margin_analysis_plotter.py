@@ -1,71 +1,75 @@
 import os
 import csv
-import re
 import math
+import re
 import numpy as np
 import matplotlib.pyplot as plt
 
-def parse_margin_csv(filepath):
-    """
-    Reads the margin analysis CSV and reconstructs the data structures 
-    required for the plotting function.
-    """
-    pm_matrix = {}
+# ==========================================
+# CONFIGURATION
+# ==========================================
+CSV_FILE_PATH = "Simulation_Testing/margin_analysis_reports_tds_extended/phase_margin_analysis_deg.csv"
+OUTPUT_DIR = "Simulation_Testing/margin_analysis_reports_tds_extended"
+
+LINE_PLOT_TITLE = "Phase margin vs. control effort priority for TDS controllers"
+BOX_PLOT_TITLE = LINE_PLOT_TITLE
+# ==========================================
+
+def read_margin_csv(filepath):
+    """Reads the generated CSV and reconstructs the pm_matrix."""
     ce_pcts = []
+    pm_matrix = {}
     
     with open(filepath, 'r', encoding='utf-8-sig') as f:
         reader = csv.reader(f)
         try:
-            headers = next(reader)
+            headers = next(reader)  # ['', 'TF1', 'TF2', ...]
         except StopIteration:
             return [], {}
             
-        tf_names = headers[1:]  # First column is empty/labels
-
+        tf_names = headers[1:]
+        
         for row in reader:
             if not row or not row[0].strip():
                 continue
-                
-            label = row[0]
-            # Extract the integer percentage from the label string (e.g., "CE Percentage... (12%)")
-            match = re.search(r'\((\d+)%\)', label)
             
-            if match:
-                ce_val = float(match.group(1))
-                ce_pcts.append(ce_val)
-                pm_matrix[ce_val] = {}
+            # Extract the CE percentage from the row label (e.g., "CE Percentage in Cost Function (12%)")
+            match = re.search(r'\((\d+(?:\.\d+)?)%\)', row[0])
+            if not match:
+                continue
                 
-                for i, val_str in enumerate(row[1:]):
-                    if i >= len(tf_names):
-                        break # Prevent index out of bounds if rows are longer than headers
-                        
-                    tf_name = tf_names[i]
-                    cleaned_val = val_str.strip().lower()
-                    
-                    if cleaned_val == 'inf':
+            ce = float(match.group(1))
+            ce_pcts.append(ce)
+            pm_matrix[ce] = {}
+            
+            for idx, val_str in enumerate(row[1:]):
+                if idx >= len(tf_names):
+                    break
+                tf_name = tf_names[idx]
+                
+                # Handle Inf, NaN, or empty cells
+                if val_str.strip().lower() in ['inf', 'nan', '']:
+                    val = float('inf')
+                else:
+                    try:
+                        val = float(val_str)
+                    except ValueError:
                         val = float('inf')
-                    elif cleaned_val == '' or cleaned_val == 'nan':
-                        val = float('nan')
-                    else:
-                        try:
-                            val = float(val_str)
-                        except ValueError:
-                            val = float('nan')
-                            
-                    pm_matrix[ce_val][tf_name] = val
-
+                        
+                pm_matrix[ce][tf_name] = val
+                
     return ce_pcts, pm_matrix
 
-def generate_ieee_plots(output_dir, ce_pcts, pm_matrix):
-    """Generates IEEE-compliant Line and Box plots for the Phase Margin data."""
+def generate_ieee_plots(output_dir, ce_pcts, pm_matrix, line_title, box_title):
+    """Generates IEEE-compliant Line and Box plots using the reconstructed data."""
     # IEEE plotting configurations
     plt.rcParams['font.family'] = 'serif'
     plt.rcParams['font.serif'] = ['Times New Roman']
-    plt.rcParams['font.size'] = 12
+    plt.rcParams['font.size'] = 10
     
     # Standard IEEE single column width: 3.5 inches
-    fig_width = 3.5 
-    fig_height = 2.5
+    fig_width = 5 
+    fig_height = 3.5
     
     avg_pms = []
     box_data = []
@@ -81,29 +85,33 @@ def generate_ieee_plots(output_dir, ce_pcts, pm_matrix):
             valid_ce_pcts.append(ce)
     
     if not valid_ce_pcts:
-        print("No valid phase margin data to plot.")
+        print("No valid data to plot.")
         return
+
+    os.makedirs(output_dir, exist_ok=True)
 
     # --- 1. Line Plot of Average Phase Margins ---
     fig_line, ax_line = plt.subplots(figsize=(fig_width, fig_height))
     plt.ylim(0, 100)
-    ax_line.set_title("Phase margin vs. control effort priority graph for TDS controllers")
     ax_line.plot(valid_ce_pcts, avg_pms, 'k-o', label='Average PM') 
     
+    ax_line.set_title(line_title)
     ax_line.set_xlabel('Control Effort Weight (%)')
-    ax_line.set_ylabel('Average Phase Margin (°)')
+    ax_line.set_ylabel('Average Phase Margin (deg)')
     ax_line.set_xticks(valid_ce_pcts)
+    
+    # Rotate labels to prevent overlapping
+    ax_line.set_xticklabels([f"{ce:g}" for ce in valid_ce_pcts], rotation=0, ha='right')
     ax_line.grid(True, linestyle=':', alpha=0.7)
     
     fig_line.tight_layout()
     line_path = os.path.join(output_dir, "average_phase_margin.pdf")
     fig_line.savefig(line_path, format='pdf', bbox_inches='tight')
     plt.close(fig_line)
-    print(f"Generated line plot: {line_path}")
+    print(f"Saved: {line_path}")
 
     # --- 2. Box Plot of Phase Margins ---
     fig_box, ax_box = plt.subplots(figsize=(fig_width, fig_height))
-    ax_box.set_title("Phase margin vs. control effort priority graph for TDS controllers")
     
     # Strict black and white styling for IEEE conformity
     ax_box.boxplot(box_data, positions=valid_ce_pcts, widths=6, patch_artist=True,
@@ -113,6 +121,7 @@ def generate_ieee_plots(output_dir, ce_pcts, pm_matrix):
                    flierprops=dict(marker='x', color='black', markersize=4),
                    medianprops=dict(color='black', linewidth=1.2))
     
+    ax_box.set_title(box_title)
     ax_box.set_xlabel('Control Effort Weight (%)')
     ax_box.set_ylabel('Phase Margin (deg)')
     plt.ylim(0, 100)
@@ -120,52 +129,32 @@ def generate_ieee_plots(output_dir, ce_pcts, pm_matrix):
     # Adjust axes spacing dynamically to fit the width of box plots
     ax_box.set_xlim(min(valid_ce_pcts) - 10, max(valid_ce_pcts) + 10)
     ax_box.set_xticks(valid_ce_pcts)
+    
+    # Rotate labels to prevent overlapping
+    ax_box.set_xticklabels([f"{ce:g}" for ce in valid_ce_pcts], rotation=0, ha='right')
     ax_box.grid(True, linestyle=':', alpha=0.7)
     
     fig_box.tight_layout()
     box_path = os.path.join(output_dir, "boxplot_phase_margin.pdf")
     fig_box.savefig(box_path, format='pdf', bbox_inches='tight')
     plt.close(fig_box)
-    print(f"Generated box plot: {box_path}")
+    print(f"Saved: {box_path}")
 
 def main():
-    # ==========================================
-    # CONFIGURATION
-    # ==========================================
-    # Point this to the CSV generated by the previous script
-    INPUT_CSV_NAME = "margin_analysis_reports_tds_extended/phase_margin_analysis_deg.csv" 
-    
-    # Optional: Use a specific directory if your CSV is in a subfolder 
-    # (e.g., "margin_analysis_reports_tds_extended")
-    TARGET_DIR = "margin_analysis_reports_tds_extended" 
-    
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    input_csv_path = os.path.join(base_dir, TARGET_DIR, INPUT_CSV_NAME)
-    
-    # If not found in the subfolder, look in the root directory
-    if not os.path.exists(input_csv_path):
-        input_csv_path = os.path.join(base_dir, INPUT_CSV_NAME)
-
-    if not os.path.exists(input_csv_path):
-        print(f"Error: Could not find '{INPUT_CSV_NAME}'.")
-        print(f"Checked paths:\n - {os.path.join(base_dir, TARGET_DIR, INPUT_CSV_NAME)}\n - {os.path.join(base_dir, INPUT_CSV_NAME)}")
+    if not os.path.exists(CSV_FILE_PATH):
+        print(f"Error: Could not find '{CSV_FILE_PATH}'. Check the configuration variables.")
         return
 
-    print(f"Reading data from: {input_csv_path}")
-    
-    # Parse the CSV back into ce_pcts list and pm_matrix dict
-    ce_pcts, pm_matrix = parse_margin_csv(input_csv_path)
+    print(f"Reading data from {CSV_FILE_PATH}...")
+    ce_pcts, pm_matrix = read_margin_csv(CSV_FILE_PATH)
     
     if not ce_pcts:
-        print("Error: No data successfully parsed from the CSV.")
+        print("Error: No data found or failed to parse the CSV.")
         return
 
-    # Use the directory where the CSV was found as the output directory for the plots
-    output_dir = os.path.dirname(input_csv_path)
-    
-    # Generate the requested PDF graphs
-    generate_ieee_plots(output_dir, ce_pcts, pm_matrix)
-    print("\nStandalone plotting complete.")
+    print("Generating plots...")
+    generate_ieee_plots(OUTPUT_DIR, ce_pcts, pm_matrix, LINE_PLOT_TITLE, BOX_PLOT_TITLE)
+    print("Done.")
 
 if __name__ == "__main__":
     main()

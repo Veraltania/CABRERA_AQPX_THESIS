@@ -9,7 +9,7 @@ from scipy_de_tuner import run_scipy_de_tuner, simulate_saturated_pi
 
 plt.rcParams['font.family'] = 'serif'
 plt.rcParams['font.serif'] = ['Times New Roman']
-plt.rcParams['font.size'] = 12
+plt.rcParams['font.size'] = 10
 
 def create_fopdt_sys(K, tau, delay, pade_order=2):
     num, den = [K], [tau, 1]

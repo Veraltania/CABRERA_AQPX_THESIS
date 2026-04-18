@@ -15,7 +15,7 @@ def generate_pdf_plot(base_dir, pop_size, target_round, target_max_iter):
     plt.rcParams.update({
         'font.family': 'serif',
         'font.serif': ['Times New Roman'],
-        'font.size': 18
+        'font.size': 16
     })
 
     algorithms = ['DE', 'GA', 'PSO']
@@ -128,7 +128,7 @@ if __name__ == "__main__":
     # --- EDIT YOUR VARIABLES DIRECTLY BELOW ---
     # ==========================================
     
-    TARGET_DIR = "Evolutionary_Algorithm_Testing/population_sweep/BATCH_OPENLOOP_CONTROL_EFFORT/population_sweep_do_feb25_nighttime"
+    TARGET_DIR = "Evolutionary_Algorithm_Testing/population_sweep/BATCH_OPENLOOP_CONTROL_EFFORT/population_sweep_tds_feb09_10"
     POPULATION_SIZE = 50
     TARGET_ROUND = 50
     MAX_ITERATIONS = 50
