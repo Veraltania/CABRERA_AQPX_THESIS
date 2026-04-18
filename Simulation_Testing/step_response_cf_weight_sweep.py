@@ -7,12 +7,9 @@ import control as ct
 
 from scipy_de_tuner import run_scipy_de_tuner, simulate_saturated_pi
 
-# Apply global font settings
-plt.rcParams.update({
-    "font.family": "serif",
-    "font.serif": ["Times New Roman"],
-    "font.size": 14
-})
+plt.rcParams['font.family'] = 'serif'
+plt.rcParams['font.serif'] = ['Times New Roman']
+plt.rcParams['font.size'] = 12
 
 def create_fopdt_sys(K, tau, delay, pade_order=2):
     num, den = [K], [tau, 1]
@@ -177,7 +174,7 @@ def main():
             'step_sp': target_sp,
             'pre_step_delay': max(time_factor, plant_params['delay']) * 2, 
             'step_duration': time_factor * 8,
-            'recovery_duration': time_factor * 8, 
+            'recovery_duration': time_factor * 14, 
             'cycles': 1
         }
         

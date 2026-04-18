@@ -5,6 +5,11 @@ import matplotlib.pyplot as plt
 import control as ct
 from scipy_de_tuner import run_scipy_de_tuner
 
+# Apply global font settings for Times New Roman, Size 10
+plt.rcParams['font.family'] = 'serif'
+plt.rcParams['font.serif'] = ['Times New Roman']
+plt.rcParams['font.size'] = 12
+
 # ==========================================
 # 1. PLANT & CONTROLLER DEFINITIONS
 # ==========================================
@@ -119,33 +124,35 @@ def calculate_metrics(t, y, u, sp):
 # 4. PLOTTING MODULE
 # ==========================================
 
-# ==========================================
-# 4. PLOTTING MODULE
-# ==========================================
-
 def plot_scenario_results(output_dir, scenario_name, t_full_hours, sp_full, shift_hour, results):
     """Generates and saves step response and control effort graphs for a specific scenario in PDF format."""
     
-    # Scaled down font size for the smaller 7.16-inch canvas
-    plot_font_size = 10 
     tick_positions = np.arange(0, 25, 3) 
     tick_labels = ['6 AM', '9 AM', '12 PM', '3 PM', '6 PM', '9 PM', '12 AM', '3 AM', '6 AM']
     
     # 1. Step Response Plot
     # Sized to exactly 7.16 inches wide. Height set to 4.5 inches to maintain a clean aspect ratio.
     plt.figure(figsize=(7.16, 4.5)) 
-    plt.plot(t_full_hours, sp_full, 'k--', label='Reference Setpoint', alpha=0.6)
+    plt.plot(t_full_hours, sp_full, 'k--', label='Setpoint', alpha=0.6)
     plt.axvline(shift_hour, color='red', linestyle=':', linewidth=1.5, label='Day/Night Shift (6 PM)')
 
     for res in results:
         plt.plot(t_full_hours, res["y"], color=res["color"], label=f'{res["name"]} (IAE: {res["iae"]:.0f})')
         
-    plt.title(f'Performance of Aged vs Fresh Controllers ({scenario_name})', fontsize=plot_font_size + 2, pad=15)
-    plt.xlabel("Time of Day", fontsize=plot_font_size)
-    plt.ylabel('DO (mg/l)', fontsize=plot_font_size)
-    plt.xticks(tick_positions, tick_labels, fontsize=plot_font_size)
-    plt.yticks(fontsize=plot_font_size)
-    plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=2, fontsize=plot_font_size, borderaxespad=0.)
+    plt.title(f'Performance of Aged vs Fresh Controllers ({scenario_name})', pad=15)
+    plt.xlabel("Time of Day")
+    plt.ylabel('DO (mg/l)')
+    plt.xticks(tick_positions, tick_labels)
+    
+    plt.legend(
+        loc='best', 
+        fontsize=8, 
+        labelspacing=0.3,   # Reduces vertical space between items
+        handlelength=1.5,   # Makes the colored line segments shorter
+        handletextpad=0.4,  # Reduces space between the line and the text
+        borderpad=0.3       # Shrinks the padding around the edges of the box
+    )
+    
     plt.grid(True, alpha=0.3)
     plt.tight_layout() 
     
@@ -160,13 +167,21 @@ def plot_scenario_results(output_dir, scenario_name, t_full_hours, sp_full, shif
     for res in results:
         plt.plot(t_full_hours, np.clip(res["u"], 0, 1), color=res["color"], label=f'{res["name"]} Effort')
         
-    plt.title(f'Control Effort: Aged vs Fresh Controllers ({scenario_name})', fontsize=plot_font_size + 2, pad=15)
-    plt.xlabel("Time of Day", fontsize=plot_font_size)
-    plt.ylabel('Control Signal', fontsize=plot_font_size)
-    plt.xticks(tick_positions, tick_labels, fontsize=plot_font_size)
-    plt.yticks(fontsize=plot_font_size)
+    plt.title(f'Control Effort: Aged vs Fresh Controllers ({scenario_name})', pad=15)
+    plt.xlabel("Time of Day")
+    plt.ylabel('Control Signal')
+    plt.xticks(tick_positions, tick_labels)
     plt.ylim(-0.05, 1.1)
-    plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=2, fontsize=plot_font_size, borderaxespad=0.)
+    
+    plt.legend(
+        loc='best', 
+        fontsize=8, 
+        labelspacing=0.3,
+        handlelength=1.5,
+        handletextpad=0.4,
+        borderpad=0.3
+    )
+    
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
     

@@ -10,7 +10,7 @@ from scipy_de_tuner import run_scipy_de_tuner, simulate_saturated_pi
 plt.rcParams.update({
     "font.family": "serif",
     "font.serif": ["Times New Roman"],
-    "font.size": 12
+    "font.size": 10
 })
 
 def create_fopdt_sys(K, tau, delay, pade_order=2):
@@ -171,7 +171,7 @@ def main():
             'step_sp': target_sp,
             'pre_step_delay': max(time_factor, plant_params['delay']) * 2, 
             'step_duration': time_factor * 8,
-            'recovery_duration': time_factor * 8, 
+            'recovery_duration': time_factor * 14, 
             'cycles': 1
         }
         
@@ -202,10 +202,10 @@ def main():
         ]
 
         # REFACTORED: 3.5 inches width (IEEE single column) with 2.8 height
-        fig_y, ax_y = plt.subplots(figsize=(3.5, 2.8))
-        fig_u, ax_u = plt.subplots(figsize=(3.5, 2.8))
+        fig_y, ax_y = plt.subplots(figsize=(3.5, 1.96875))
+        fig_u, ax_u = plt.subplots(figsize=(3.5, 1.96875))
 
-        ax_y.plot(t_eval_hours, setpoints, 'k--', label='Reference Setpoint', alpha=0.6)
+        ax_y.plot(t_eval_hours, setpoints, 'k--', label='Setpoint', alpha=0.6)
 
         for cfg in configs:
             y_out, u_out = simulate_saturated_pi(plant, cfg["kp"], cfg["ki"], t_eval, setpoints, u_min=0.0, u_max=1.0)
@@ -225,14 +225,22 @@ def main():
             aggregated_metrics['Rise_Time'][tf_name][tuner_key] = rt
             aggregated_metrics['Overshoot'][tf_name][tuner_key] = os_pct
 
-            ax_y.plot(t_eval_hours, y_out, color=cfg["color"], label=f'{cfg["name"]} (IAE: {iae:.0f})')
+            ax_y.plot(t_eval_hours, y_out, color=cfg["color"], label=f'{cfg["name"]}')
             ax_u.plot(t_eval_hours, u_out, color=cfg["color"], label=f'{cfg["name"]}')
 
         ax_y.set_title(f'Step Response Comparison', pad=10)
         ax_y.set_xlabel('Time (hours)')
         ax_y.set_ylabel('System Output')
         # Changed to ncol=1 to stack correctly in a 3.5in width
-        ax_y.legend(loc='upper center', bbox_to_anchor=(0.5, -0.35), ncol=1, borderaxespad=0.)
+        # For ax_y
+        ax_y.legend(
+            loc='best', 
+            fontsize=8, 
+            labelspacing=0.3,   # Reduces vertical space between items
+            handlelength=1.5,   # Makes the colored line segments shorter
+            handletextpad=0.4,  # Reduces space between the line and the text
+            borderpad=0.3       # Shrinks the padding around the edges of the box
+        )
         ax_y.grid(True, alpha=0.3)
         fig_y.savefig(os.path.join(output_dir, f"step_response_{tf_name}.pdf"), format='pdf', bbox_inches='tight')
         plt.close(fig_y)
@@ -241,8 +249,14 @@ def main():
         ax_u.set_xlabel('Time (hours)')
         ax_u.set_ylabel('Control Signal')
         ax_u.set_ylim(-0.1, 1.1) 
-        # Changed to ncol=1 to stack correctly in a 3.5in width
-        ax_u.legend(loc='upper center', bbox_to_anchor=(0.5, -0.35), ncol=1, borderaxespad=0.)
+        ax_u.legend(
+            loc='best', 
+            fontsize=8, 
+            labelspacing=0.3,   # Reduces vertical space between items
+            handlelength=1.5,   # Makes the colored line segments shorter
+            handletextpad=0.4,  # Reduces space between the line and the text
+            borderpad=0.3       # Shrinks the padding around the edges of the box
+        )
         ax_u.grid(True, alpha=0.3)
         fig_u.savefig(os.path.join(output_dir, f"control_effort_{tf_name}.pdf"), format='pdf', bbox_inches='tight')
         plt.close(fig_u)

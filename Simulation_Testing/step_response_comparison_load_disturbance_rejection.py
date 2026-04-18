@@ -10,8 +10,11 @@ from scipy_de_tuner import run_scipy_de_tuner
 # 0. CONFIGURATION
 # ==========================================
 
-# Set one unified font size for all titles, labels, and legends
-GLOBAL_FONT_SIZE = 14
+plt.rcParams.update({
+    "font.family": "serif",
+    "font.serif": ["Times New Roman"],
+    "font.size": 10
+})
 
 # ==========================================
 # 1. PLANT CREATION
@@ -86,8 +89,8 @@ def write_formatted_table(output_path, metric_name, tfs, metrics_dict):
 
 def main():
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    input_csv = os.path.join(base_dir, "tf_parameters_tds.csv")
-    output_dir = os.path.join(base_dir, "simulation_graphs_disturbance_tds")
+    input_csv = os.path.join(base_dir, "tf_parameters_do.csv")
+    output_dir = os.path.join(base_dir, "simulation_graphs_disturbance_do")
     os.makedirs(output_dir, exist_ok=True)
     
     aggregated_metrics = {'IAE': {}, 'Control_Effort_AUC': {}}
@@ -159,15 +162,21 @@ def main():
             aggregated_metrics['Control_Effort_AUC'][tf_name][tuner_key] = auc_u
 
             # Plot on respective axes
-            ax_y.plot(t_eval, y_dist, color=cfg["color"], linewidth=1.5, label=f'{cfg["name"]} (IAE: {iae:.2f})')
-            ax_u.plot(t_eval, u_dist, color=cfg["color"], linewidth=1.5, label=f'{cfg["name"]} (AUC: {auc_u:.2f})')
+            ax_y.plot(t_eval, y_dist, color=cfg["color"], linewidth=1.5, label=f'{cfg["name"]}')
+            ax_u.plot(t_eval, u_dist, color=cfg["color"], linewidth=1.5, label=f'{cfg["name"]}')
 
         # --- Figure 1: Load Disturbance Rejection ---
-        ax_y.plot([0, t_final], [0, 0], 'k--', linewidth=1.2, label='Ideal State = 0')
-        ax_y.set_title('Load Disturbance Rejection Response', fontsize=GLOBAL_FONT_SIZE)
-        ax_y.set_xlabel('Time (s)', fontsize=GLOBAL_FONT_SIZE)
-        ax_y.set_ylabel('Process Output (y)', fontsize=GLOBAL_FONT_SIZE)
-        ax_y.legend(loc='upper center', bbox_to_anchor=(0.5, -0.45), fontsize=GLOBAL_FONT_SIZE)
+        ax_y.set_title('Load Disturbance Rejection Response')
+        ax_y.set_xlabel('Time (s)')
+        ax_y.set_ylabel('Process Output (y)')
+        ax_y.legend(
+            loc='best', 
+            fontsize=8, 
+            labelspacing=0.3,   # Reduces vertical space between items
+            handlelength=1.5,   # Makes the colored line segments shorter
+            handletextpad=0.4,  # Reduces space between the line and the text
+            borderpad=0.3       # Shrinks the padding around the edges of the box
+        )
         ax_y.grid(True, alpha=0.5)
         
         fig_y.tight_layout()
@@ -176,11 +185,17 @@ def main():
         plt.close(fig_y)
 
         # --- Figure 2: Control Effort ---
-        ax_u.plot([0, t_final], [0, 0], 'k--', linewidth=1.2, label='Ideal State = 0')
-        ax_u.set_title('Control Effort Response', fontsize=GLOBAL_FONT_SIZE)
-        ax_u.set_xlabel('Time (s)', fontsize=GLOBAL_FONT_SIZE)
-        ax_u.set_ylabel('Control Effort (u)', fontsize=GLOBAL_FONT_SIZE)
-        ax_u.legend(loc='best', fontsize=GLOBAL_FONT_SIZE)
+        ax_u.set_title('Control Effort Response')
+        ax_u.set_xlabel('Time (s)')
+        ax_u.set_ylabel('Control Effort (u)')
+        ax_u.legend(
+            loc='best', 
+            fontsize=8, 
+            labelspacing=0.3,   # Reduces vertical space between items
+            handlelength=1.5,   # Makes the colored line segments shorter
+            handletextpad=0.4,  # Reduces space between the line and the text
+            borderpad=0.3       # Shrinks the padding around the edges of the box
+        )
         ax_u.grid(True, alpha=0.5)
 
         fig_u.tight_layout()
