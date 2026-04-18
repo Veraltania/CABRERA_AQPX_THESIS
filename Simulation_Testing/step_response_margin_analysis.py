@@ -91,7 +91,7 @@ def generate_ieee_plots(output_dir, ce_pcts, pm_matrix):
     
     # Standard IEEE single column width: 3.5 inches
     fig_width = 3.5 
-    fig_height = 2.5
+    fig_height = fig_width 
     
     avg_pms = []
     box_data = []
@@ -115,12 +115,15 @@ def generate_ieee_plots(output_dir, ce_pcts, pm_matrix):
     plt.ylim(0, 100)
     ax_line.plot(valid_ce_pcts, avg_pms, 'k-o', label='Average PM') 
     
+    ax_line.set_title("Phase margin vs. control effort priority graph")
     ax_line.set_xlabel('Control Effort Weight (%)')
     ax_line.set_ylabel('Average Phase Margin (deg)')
     ax_line.set_xticks(valid_ce_pcts)
+    
+    # Rotate labels to prevent overlapping
+    ax_line.set_xticklabels(valid_ce_pcts, rotation=45, ha='right')
     ax_line.grid(True, linestyle=':', alpha=0.7)
     
-
     fig_line.tight_layout()
     line_path = os.path.join(output_dir, "average_phase_margin.pdf")
     fig_line.savefig(line_path, format='pdf', bbox_inches='tight')
@@ -137,6 +140,7 @@ def generate_ieee_plots(output_dir, ce_pcts, pm_matrix):
                    flierprops=dict(marker='x', color='black', markersize=4),
                    medianprops=dict(color='black', linewidth=1.2))
     
+    ax_box.set_title("Phase margin vs. control effort priority graph")
     ax_box.set_xlabel('Control Effort Weight (%)')
     ax_box.set_ylabel('Phase Margin (deg)')
     plt.ylim(0, 100)
@@ -144,6 +148,9 @@ def generate_ieee_plots(output_dir, ce_pcts, pm_matrix):
     # Adjust axes spacing dynamically to fit the width of box plots
     ax_box.set_xlim(min(valid_ce_pcts) - 10, max(valid_ce_pcts) + 10)
     ax_box.set_xticks(valid_ce_pcts)
+    
+    # Rotate labels to prevent overlapping
+    ax_box.set_xticklabels(valid_ce_pcts, rotation=45, ha='right')
     ax_box.grid(True, linestyle=':', alpha=0.7)
     
     fig_box.tight_layout()
