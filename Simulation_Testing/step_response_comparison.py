@@ -6,8 +6,14 @@ import control as ct
 
 from scipy_de_tuner import run_scipy_de_tuner, simulate_saturated_pi
 
+# Apply global font settings
+plt.rcParams.update({
+    "font.family": "serif",
+    "font.serif": ["Times New Roman"],
+    "font.size": 12
+})
+
 def create_fopdt_sys(K, tau, delay, pade_order=2):
-    """Creates a Transfer Function for FOPDT using Pade approximation for delay."""
     num, den = [K], [tau, 1]
     plant_linear = ct.tf(num, den)
     
@@ -18,7 +24,6 @@ def create_fopdt_sys(K, tau, delay, pade_order=2):
     return plant_linear
 
 def generate_setpoint_array(t, sequence_config):
-    """Generates the reference signal array for the simulation time vector."""
     base_sp = sequence_config['base_sp']
     step_sp = sequence_config['step_sp']
     
@@ -118,7 +123,7 @@ def read_tf_parameters(filepath):
 
 def write_formatted_table(output_path, metric_name, tfs, metrics_dict):
     headers = ['Gain'] + [tf['name'] for tf in tfs]
-    tuners = ['DE-tuned', 'Lambda-tuned ($\\lambda$ = 3$\\tau$)', 'MATLAB pidtune(), balanced']
+    tuners = ['DE-tuned', 'Lambda-tuned ($\\lambda$ = 3$\\tau$)', 'MATLAB pidtune()']
     
     with open(output_path, 'w', newline='') as f:
         writer = csv.writer(f)
@@ -183,7 +188,6 @@ def main():
             max_kp, min_kp = 1.5, 0
             max_ki, min_ki = 0.01, 0
 
-        # Run Auto-Tuner
         de_kp, de_ki = run_scipy_de_tuner(
             f"DE ({tf_name})", plant,
             min_kp, max_kp, min_ki, max_ki,
@@ -194,12 +198,12 @@ def main():
         configs = [
             {"name": "DE-tuned", "color": "red", "kp": de_kp, "ki": de_ki},
             {"name": "Lambda-tuned ($\\lambda$ = 3$\\tau$)", "color": "green", "kp": tf_data['lambda_kp'], "ki": tf_data['lambda_ki']},
-            {"name": "MATLAB pidtune(), balanced", "color": "blue", "kp": tf_data['matlab_kp'], "ki": tf_data['matlab_ki']}
+            {"name": "MATLAB pidtune()", "color": "blue", "kp": tf_data['matlab_kp'], "ki": tf_data['matlab_ki']}
         ]
 
-        # REFACTORED: 7.16 inches width with roughly 14:8 aspect ratio height 
-        fig_y, ax_y = plt.subplots(figsize=(7.16, 4.09))
-        fig_u, ax_u = plt.subplots(figsize=(7.16, 4.09))
+        # REFACTORED: 3.5 inches width (IEEE single column) with 2.8 height
+        fig_y, ax_y = plt.subplots(figsize=(3.5, 2.8))
+        fig_u, ax_u = plt.subplots(figsize=(3.5, 2.8))
 
         ax_y.plot(t_eval_hours, setpoints, 'k--', label='Reference Setpoint', alpha=0.6)
 
@@ -209,7 +213,6 @@ def main():
             error = setpoints - y_out
             iae = np.trapezoid(np.abs(error), t_eval)
             
-            # --- UPDATED METRIC EXPORT: Total Variation ---
             u_with_initial = np.concatenate(([0.0], u_out))
             u_aggressiveness = np.sum(np.abs(np.diff(u_with_initial)))
             
@@ -223,36 +226,31 @@ def main():
             aggregated_metrics['Overshoot'][tf_name][tuner_key] = os_pct
 
             ax_y.plot(t_eval_hours, y_out, color=cfg["color"], label=f'{cfg["name"]} (IAE: {iae:.0f})')
-            ax_u.plot(t_eval_hours, u_out, color=cfg["color"], label=f'{cfg["name"]} (TV Effort: {u_aggressiveness:.4f})')
+            ax_u.plot(t_eval_hours, u_out, color=cfg["color"], label=f'{cfg["name"]}')
 
-        # REFACTORED: Adjusted fonts, saved as PDF
-        ax_y.set_title(f'Step Response Comparison', fontsize=12, pad=12)
-        ax_y.set_xlabel('Time (hours)', fontsize=10)
-        ax_y.set_ylabel('System Output', fontsize=10)
-        ax_y.legend(loc='upper center', bbox_to_anchor=(0.5, -0.45), ncol=2, fontsize=9, borderaxespad=0.)
+        ax_y.set_title(f'Step Response Comparison', pad=10)
+        ax_y.set_xlabel('Time (hours)')
+        ax_y.set_ylabel('System Output')
+        # Changed to ncol=1 to stack correctly in a 3.5in width
+        ax_y.legend(loc='upper center', bbox_to_anchor=(0.5, -0.35), ncol=1, borderaxespad=0.)
         ax_y.grid(True, alpha=0.3)
-        fig_y.tight_layout()
         fig_y.savefig(os.path.join(output_dir, f"step_response_{tf_name}.pdf"), format='pdf', bbox_inches='tight')
         plt.close(fig_y)
         
-        # REFACTORED: Adjusted fonts, saved as PDF
-        ax_u.set_title(f'Control Effort Comparison', fontsize=12, pad=12)
-        ax_u.set_xlabel('Time (hours)', fontsize=10)
-        ax_u.set_ylabel('Control Signal (u)', fontsize=10)
+        ax_u.set_title(f'Control Effort Comparison', pad=10)
+        ax_u.set_xlabel('Time (hours)')
+        ax_u.set_ylabel('Control Signal')
         ax_u.set_ylim(-0.1, 1.1) 
-        ax_u.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=2, fontsize=9, borderaxespad=0.)
+        # Changed to ncol=1 to stack correctly in a 3.5in width
+        ax_u.legend(loc='upper center', bbox_to_anchor=(0.5, -0.35), ncol=1, borderaxespad=0.)
         ax_u.grid(True, alpha=0.3)
-        fig_u.tight_layout()
         fig_u.savefig(os.path.join(output_dir, f"control_effort_{tf_name}.pdf"), format='pdf', bbox_inches='tight')
         plt.close(fig_u)
 
-    print("\n--- Exporting Formatted Metric Tables ---")
     write_formatted_table(os.path.join(output_dir, "IAE_table.csv"), 'IAE', tf_list, aggregated_metrics['IAE'])
     write_formatted_table(os.path.join(output_dir, "Control_Effort_table.csv"), 'Control_Effort', tf_list, aggregated_metrics['Control_Effort'])
     write_formatted_table(os.path.join(output_dir, "Rise_Time_table.csv"), 'Rise_Time', tf_list, aggregated_metrics['Rise_Time'])
     write_formatted_table(os.path.join(output_dir, "Overshoot_table.csv"), 'Overshoot', tf_list, aggregated_metrics['Overshoot'])
-    
-    print(f"Simulation Complete. Processed {len(tf_list)} transfer functions.")
 
 if __name__ == "__main__":
     main()

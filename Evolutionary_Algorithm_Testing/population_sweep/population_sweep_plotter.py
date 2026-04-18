@@ -12,11 +12,10 @@ def generate_pdf_plot(base_dir, pop_size, target_round, target_max_iter):
         print(f"Error: Directory '{base_dir}' does not exist.")
         return
 
-    # Set Times New Roman and font size 14 globally
     plt.rcParams.update({
         'font.family': 'serif',
         'font.serif': ['Times New Roman'],
-        'font.size': 14
+        'font.size': 18
     })
 
     algorithms = ['DE', 'GA', 'PSO']
@@ -129,7 +128,7 @@ if __name__ == "__main__":
     # --- EDIT YOUR VARIABLES DIRECTLY BELOW ---
     # ==========================================
     
-    TARGET_DIR = "Evolutionary_Algorithm_Testing/population_sweep/BATCH_OPENLOOP_CONTROL_EFFORT/population_sweep_tds_feb09_10"
+    TARGET_DIR = "Evolutionary_Algorithm_Testing/population_sweep/BATCH_OPENLOOP_CONTROL_EFFORT/population_sweep_do_feb25_nighttime"
     POPULATION_SIZE = 50
     TARGET_ROUND = 50
     MAX_ITERATIONS = 50

@@ -7,8 +7,14 @@ import control as ct
 
 from scipy_de_tuner import run_scipy_de_tuner, simulate_saturated_pi
 
+# Apply global font settings
+plt.rcParams.update({
+    "font.family": "serif",
+    "font.serif": ["Times New Roman"],
+    "font.size": 14
+})
+
 def create_fopdt_sys(K, tau, delay, pade_order=2):
-    """Creates a Transfer Function for FOPDT using Pade approximation for delay."""
     num, den = [K], [tau, 1]
     plant_linear = ct.tf(num, den)
     
@@ -19,7 +25,6 @@ def create_fopdt_sys(K, tau, delay, pade_order=2):
     return plant_linear
 
 def generate_setpoint_array(t, sequence_config):
-    """Generates the reference signal array for the simulation time vector."""
     base_sp = sequence_config['base_sp']
     step_sp = sequence_config['step_sp']
     
@@ -114,7 +119,6 @@ def read_tf_parameters(filepath):
     return tfs
 
 def write_tradeoff_table(output_path, tf_name, sweep_results):
-    """Writes the sweep metrics to a CSV for a specific transfer function."""
     headers = ['CE_Weight_Pct', 'Kp', 'Ki', 'IAE', 'Total_Variation', 'Rise_Time', 'Overshoot']
     with open(output_path, 'w', newline='') as f:
         writer = csv.writer(f)
@@ -142,22 +146,16 @@ def main():
     
     tf_list = read_tf_parameters(input_csv)
     
-    # ------------------------------------------
-    # CONFIGURATION: Parameter Sweep Settings
-    # ------------------------------------------
-    start_ce = 0.25      # Minimum Control Effort Weight
-    end_ce = 3.75        # Maximum Control Effort Weight
-    num_bins = 11        # Number of evaluations to sweep
+    start_ce = 0.25
+    end_ce = 3.75  
+    num_bins = 11  
     
-    # Target figure width in inches (7.16 inches = 182 mm = 43 picas)
-    target_width_in = 7.16
-    # ------------------------------------------
+    # Target figure width in inches for IEEE single column
+    target_width_in = 3.5
+    target_height_in = 2.8
 
-    fontsize = 16
-    
     ce_weights_to_test = np.linspace(start_ce, end_ce, num_bins)
     
-    # Create normalization and colormap mapping specifically for the continuous colorbars (Step/Effort plots)
     ce_pcts_global = [(ce / 4.0) * 100.0 for ce in ce_weights_to_test]
     colormap = cm.viridis
     norm = plt.Normalize(vmin=min(ce_pcts_global), vmax=max(ce_pcts_global))
@@ -198,13 +196,11 @@ def main():
 
         sweep_results = []
 
-        # 1. RUN THE PARAMETER SWEEP
         for idx, ce in enumerate(ce_weights_to_test):
             ce_pct = (ce / 4.0) * 100.0 
             perf = (4.0 - ce) / 3.0
             de_weights = [perf, ce, perf, perf]
             
-            print(f"  Tuning for CE Weight = {ce_pct:.1f}%...")
             de_kp, de_ki = run_scipy_de_tuner(
                 f"DE (ce={ce_pct:.1f}%)", plant,
                 min_kp, max_kp, min_ki, max_ki,
@@ -226,97 +222,75 @@ def main():
             sweep_results.append({
                 'ce': ce, 'ce_pct': ce_pct, 'kp': de_kp, 'ki': de_ki,
                 'iae': iae, 'tv': tv_effort, 'rt': rt, 'os': os_pct,
-                'y': y_out, 'u': u_out, 'color': colormap(norm(ce_pct)) # Retained for time series plots
+                'y': y_out, 'u': u_out, 'color': colormap(norm(ce_pct))
             })
 
-        # 2. GENERATE TIME SERIES PLOTS
-        # Plot A: Step Response Overlay (Aspect ratio adjusted to maintain 2:1 roughly)
-        fig_y, ax_y = plt.subplots(figsize=(target_width_in, target_width_in / 2.0))
+        # Plot A
+        fig_y, ax_y = plt.subplots(figsize=(target_width_in, target_height_in))
         ax_y.plot(t_eval_hours, setpoints, 'k--', label='Setpoint', alpha=0.6)
         for res in sweep_results:
             ax_y.plot(t_eval_hours, res['y'], color=res['color']) 
             
-        ax_y.set_title(f'Step Response Sweep', fontsize=fontsize)
-        ax_y.set_xlabel('Time (hours)', fontsize=fontsize)
-        ax_y.set_ylabel('System Output', fontsize=fontsize)
+        ax_y.set_title(f'Step Response Sweep')
+        ax_y.set_xlabel('Time (hours)')
+        ax_y.set_ylabel('System Output')
         ax_y.grid(True, alpha=0.3)
         
-        # Add colorbar
         cbar_y = fig_y.colorbar(sm, ax=ax_y)
-        cbar_y.set_label('Control Effort Weight (%)', rotation=270, labelpad=20, fontsize=fontsize-2)
+        cbar_y.set_label('Effort Weight (%)', rotation=270, labelpad=20)
         
-        fig_y.tight_layout()
-        fig_y.savefig(os.path.join(output_dir, f"step_response_sweep_{tf_name}.pdf"), format='pdf')
+        fig_y.savefig(os.path.join(output_dir, f"step_response_sweep_{tf_name}.pdf"), format='pdf', bbox_inches='tight')
         plt.close(fig_y)
         
-        # Plot B: Control Effort Overlay
-        fig_u, ax_u = plt.subplots(figsize=(target_width_in, target_width_in / 2.0))
+        # Plot B
+        fig_u, ax_u = plt.subplots(figsize=(target_width_in, target_height_in))
         for res in sweep_results:
             ax_u.plot(t_eval_hours, res['u'], color=res['color']) 
             
-        ax_u.set_title(f'Control Effort Sweep', fontsize=fontsize)
-        ax_u.set_xlabel('Time (hours)', fontsize=fontsize)
-        ax_u.set_ylabel('Control Signal (u)', fontsize=fontsize)
+        ax_u.set_title(f'Control Effort Sweep')
+        ax_u.set_xlabel('Time (hours)')
+        ax_u.set_ylabel('Control Signal')
         ax_u.set_ylim(-0.1, 1.1) 
         ax_u.grid(True, alpha=0.3)
         
-        # Add colorbar
         cbar_u = fig_u.colorbar(sm, ax=ax_u)
-        cbar_u.set_label('Control Effort Weight (%)', rotation=270, labelpad=20, fontsize=fontsize-2)
+        cbar_u.set_label('Effort Weight (%)', rotation=270, labelpad=20)
 
-        fig_u.tight_layout()
-        fig_u.savefig(os.path.join(output_dir, f"control_effort_sweep_{tf_name}.pdf"), format='pdf')
+        fig_u.savefig(os.path.join(output_dir, f"control_effort_sweep_{tf_name}.pdf"), format='pdf', bbox_inches='tight')
         plt.close(fig_u)
 
-        # 3. GENERATE TRADEOFF PLOTS
         iaes = [r['iae'] for r in sweep_results]
         rts = [r['rt'] for r in sweep_results]
         oss = [r['os'] for r in sweep_results]
         ce_pcts = [r['ce_pct'] for r in sweep_results]
         
-        # Define the three tradeoffs to plot
         tradeoff_configs = [
-            ('iae', iaes, 'Integral Absolute Error (IAE)', 'IAE'),
-            ('rt', rts, 'Rise Time (seconds)', 'Rise Time'),
+            ('iae', iaes, 'Integral Absolute Error', 'IAE'),
+            ('rt', rts, 'Rise Time (sec)', 'Rise Time'),
             ('os', oss, 'Overshoot (%)', 'Overshoot')
         ]
         
         for metric_key, y_vals, ylabel, title_name in tradeoff_configs:
-            # Aspect ratio adjusted to maintain the original 10x8 proportion (1.25 ratio)
-            fig_p, ax_p = plt.subplots(figsize=(target_width_in, target_width_in / 1.25))
+            fig_p, ax_p = plt.subplots(figsize=(target_width_in, target_height_in))
             
-            # Sort for clean connecting lines
             sort_indices = np.argsort(ce_pcts)
             x_sorted = np.array(ce_pcts)[sort_indices]
             y_sorted = np.array(y_vals)[sort_indices]
             
-            # Connecting line
             ax_p.plot(x_sorted, y_sorted, 'k-', alpha=0.3, zorder=1) 
+            scatter = ax_p.scatter(ce_pcts, y_vals, color='tab:blue', s=60, zorder=3)
             
-            # Linear Fit
-            z = np.polyfit(ce_pcts, y_vals, 1)
-            p = np.poly1d(z)
-
-            # Scatter points
-            scatter = ax_p.scatter(ce_pcts, y_vals, color='tab:blue', s=100, zorder=3)
-            
-            ax_p.set_title(f'Trade-off: {title_name} vs %CE', fontsize=fontsize)
-            ax_p.set_xlabel('Control Effort Weight (%)', fontsize=fontsize)
-            ax_p.set_ylabel(ylabel, fontsize=fontsize)
-            
-            # Ensure X-axis scales from 0 to 100
+            ax_p.set_title(f'Trade-off: {title_name} vs %CE')
+            ax_p.set_xlabel('Control Effort Weight (%)')
+            ax_p.set_ylabel(ylabel)
             ax_p.set_xlim(0, 100) 
             ax_p.grid(True, alpha=0.3)
             
-            fig_p.tight_layout()
-            fig_p.savefig(os.path.join(output_dir, f"tradeoff_{metric_key}_{tf_name}.pdf"), format='pdf')
+            fig_p.savefig(os.path.join(output_dir, f"tradeoff_{metric_key}_{tf_name}.pdf"), format='pdf', bbox_inches='tight')
             plt.close(fig_p)
 
-        # 4. EXPORT METRICS TO CSV
         csv_path = os.path.join(output_dir, f"metrics_sweep_{tf_name}.csv")
         write_tradeoff_table(csv_path, tf_name, sweep_results)
-
-    print(f"\nSimulation Complete. Check the '{os.path.basename(output_dir)}' folder for outputs.")
 
 if __name__ == "__main__":
     main()
