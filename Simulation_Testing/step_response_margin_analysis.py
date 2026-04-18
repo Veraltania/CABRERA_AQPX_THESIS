@@ -115,7 +115,7 @@ def generate_ieee_plots(output_dir, ce_pcts, pm_matrix):
     plt.ylim(0, 100)
     ax_line.plot(valid_ce_pcts, avg_pms, 'k-o', label='Average PM') 
     
-    ax_line.set_title("Phase margin vs. control effort priority graph")
+    ax_line.set_title("Phase margin vs. control effort priority graph for DO controllers")
     ax_line.set_xlabel('Control Effort Weight (%)')
     ax_line.set_ylabel('Average Phase Margin (deg)')
     ax_line.set_xticks(valid_ce_pcts)
@@ -162,8 +162,8 @@ def main():
     # ==========================================
     # CONFIGURATION
     # ==========================================
-    INPUT_CSV_NAME = "tf_parameters_tds.csv"
-    FOLDER_NAME = "margin_analysis_reports_tds_extended"
+    INPUT_CSV_NAME = "tf_parameters_do.csv"
+    FOLDER_NAME = "margin_analysis_reports_do_extended"
     
     base_dir = os.path.dirname(os.path.abspath(__file__))
     input_csv = os.path.join(base_dir, INPUT_CSV_NAME)
