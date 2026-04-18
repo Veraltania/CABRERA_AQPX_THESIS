@@ -106,8 +106,12 @@ def generate_scatterplot(df, x_col, y_col, category, is_average, output_dir):
     active_labels = df["Transfer Function"].unique()
     valid_hue_order = [label for label in hue_order if label in active_labels]
 
-    # Set base font sizes scaled down for the smaller 7.16-inch width
-    plt.rcParams.update({'font.size': 10})
+    # Set Times New Roman and font size 14 globally
+    plt.rcParams.update({
+        'font.family': 'serif',
+        'font.serif': ['Times New Roman'],
+        'font.size': 14
+    })
 
     # Set up the plot area with EXACT 7.16 inch width (height is proportionally estimated to 4.5 inches)
     fig, ax = plt.subplots(figsize=(7.16, 4.5))
@@ -130,10 +134,10 @@ def generate_scatterplot(df, x_col, y_col, category, is_average, output_dir):
         ax=ax
     )
 
-    # Label the axes with proportional font sizes
-    ax.set_xlabel(x_col, fontweight='bold', fontsize=11)
-    ax.set_ylabel(y_col, fontweight='bold', fontsize=11)
-    ax.set_title(f"DE-tuned {plot_type} Gain Distribution", fontsize=12, fontweight='bold', pad=15)
+    # Label the axes (inherited font size 14)
+    ax.set_xlabel(x_col)
+    ax.set_ylabel(y_col)
+    ax.set_title(f"DE-tuned Gain Distribution", pad=15)
 
     # Ensure axes start at 0 (Accounting for negative reverse-acting gains in TDS)
     x_min, x_max = ax.get_xlim()
@@ -157,8 +161,6 @@ def generate_scatterplot(df, x_col, y_col, category, is_average, output_dir):
         title="Transfer Function", 
         loc='center left', 
         bbox_to_anchor=(1.02, 0.5), # Pushes it outside the right edge
-        title_fontsize=11, 
-        fontsize=10,
         frameon=True
     )
     legend.get_title().set_fontweight('bold')

@@ -163,8 +163,8 @@ def main():
     # ==========================================
     # CONFIGURATION
     # ==========================================
-    INPUT_CSV_NAME = "tf_parameters_do.csv"
-    FOLDER_NAME = "do_extended_margin_analysis_reports"
+    INPUT_CSV_NAME = "tf_parameters_tds.csv"
+    FOLDER_NAME = "margin_analysis_reports_tds_extended"
     
     base_dir = os.path.dirname(os.path.abspath(__file__))
     input_csv = os.path.join(base_dir, INPUT_CSV_NAME)

@@ -12,6 +12,13 @@ def generate_pdf_plot(base_dir, pop_size, target_round, target_max_iter):
         print(f"Error: Directory '{base_dir}' does not exist.")
         return
 
+    # Set Times New Roman and font size 14 globally
+    plt.rcParams.update({
+        'font.family': 'serif',
+        'font.serif': ['Times New Roman'],
+        'font.size': 14
+    })
+
     algorithms = ['DE', 'GA', 'PSO']
     color_map = {'DE': '#1f77b4', 'GA': '#ff7f0e', 'PSO': '#2ca02c'}
     loaded_data = {}
@@ -98,17 +105,16 @@ def generate_pdf_plot(base_dir, pop_size, target_round, target_max_iter):
     ax1.axhline(ax1.get_ylim()[0], color='red', linestyle=':', linewidth=2.5)
     ax2.axhline(ax2.get_ylim()[1], color='red', linestyle=':', linewidth=2.5)
 
-    # Styling
-    ax1.set_title(f'Cost Convergence Comparison of DE, PSO, and GA', fontsize=14, fontweight='bold')
-    ax2.set_xlabel('Iteration', fontsize=12)
-    fig.text(0.04, 0.5, 'Cost', va='center', rotation='vertical', fontsize=12)
+    # Styling (Inherits global font size 14, NO BOLD)
+    ax1.set_title(f'Cost Convergence Comparison of DE, PSO, and GA')
+    ax2.set_xlabel('Iteration')
+    fig.text(0.04, 0.5, 'Cost', va='center', rotation='vertical')
     
     ax1.set_xlim(0, target_max_iter)
     ax2.set_xlim(0, target_max_iter)
     
     ax1.grid(True, which='both', linestyle=':', linewidth=0.7)
-    ax2.grid(True, which='both', linestyle=':', linewidth=0.7)
-    ax1.legend(loc='upper right', fontsize=11)
+    ax1.legend(loc='upper right')
 
     # Save as Vector Graphic (PDF)
     output_filename = base_dir / f'vector_cost_history_pop_{pop_size:03d}.pdf'
