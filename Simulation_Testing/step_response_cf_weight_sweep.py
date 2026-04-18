@@ -149,7 +149,12 @@ def main():
     
     # Target figure width in inches for IEEE single column
     target_width_in = 3.5
-    target_height_in = 2.8
+    
+    # 16:9 aspect ratio calculation (Height = Width * 9 / 16)
+    target_height_16_9_in = target_width_in * (9.0 / 16.0) 
+    
+    # Original target height (kept for trade-off plots if desired)
+    target_height_in = 2.8 
 
     ce_weights_to_test = np.linspace(start_ce, end_ce, num_bins)
     
@@ -222,8 +227,8 @@ def main():
                 'y': y_out, 'u': u_out, 'color': colormap(norm(ce_pct))
             })
 
-        # Plot A
-        fig_y, ax_y = plt.subplots(figsize=(target_width_in, target_height_in))
+        # Plot A (16:9 Aspect Ratio applied)
+        fig_y, ax_y = plt.subplots(figsize=(target_width_in, target_height_16_9_in))
         ax_y.plot(t_eval_hours, setpoints, 'k--', label='Setpoint', alpha=0.6)
         for res in sweep_results:
             ax_y.plot(t_eval_hours, res['y'], color=res['color']) 
@@ -239,8 +244,8 @@ def main():
         fig_y.savefig(os.path.join(output_dir, f"step_response_sweep_{tf_name}.pdf"), format='pdf', bbox_inches='tight')
         plt.close(fig_y)
         
-        # Plot B
-        fig_u, ax_u = plt.subplots(figsize=(target_width_in, target_height_in))
+        # Plot B (16:9 Aspect Ratio applied)
+        fig_u, ax_u = plt.subplots(figsize=(target_width_in, target_height_16_9_in))
         for res in sweep_results:
             ax_u.plot(t_eval_hours, res['u'], color=res['color']) 
             
@@ -267,6 +272,7 @@ def main():
             ('os', oss, 'Overshoot (%)', 'Overshoot')
         ]
         
+        # Trade-off plots left to their original size 
         for metric_key, y_vals, ylabel, title_name in tradeoff_configs:
             fig_p, ax_p = plt.subplots(figsize=(target_width_in, target_height_in))
             

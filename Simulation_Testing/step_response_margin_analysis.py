@@ -85,17 +85,9 @@ def write_margin_csv(output_path, tf_names, ce_pcts, data_matrix, is_gm=False):
 def generate_ieee_plots(output_dir, ce_pcts, pm_matrix):
     """Generates IEEE-compliant Line and Box plots for the Phase Margin data."""
     # IEEE plotting configurations
-    plt.rcParams.update({
-        'font.family': 'serif',
-        'font.size': 9,
-        'axes.labelsize': 9,
-        'axes.titlesize': 9,
-        'xtick.labelsize': 8,
-        'ytick.labelsize': 8,
-        'legend.fontsize': 8,
-        'lines.linewidth': 1.0,
-        'lines.markersize': 4
-    })
+    plt.rcParams['font.family'] = 'serif'
+    plt.rcParams['font.serif'] = ['Times New Roman']
+    plt.rcParams['font.size'] = 12
     
     # Standard IEEE single column width: 3.5 inches
     fig_width = 3.5 
