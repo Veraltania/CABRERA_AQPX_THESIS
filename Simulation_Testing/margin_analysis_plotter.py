@@ -8,10 +8,10 @@ import matplotlib.pyplot as plt
 # ==========================================
 # CONFIGURATION
 # ==========================================
-CSV_FILE_PATH = "Simulation_Testing/margin_analysis_reports_tds_extended/phase_margin_analysis_deg.csv"
-OUTPUT_DIR = "Simulation_Testing/margin_analysis_reports_tds_extended"
+CSV_FILE_PATH = "Simulation_Testing/margin_analysis_reports_do_extended/phase_margin_analysis_deg.csv"
+OUTPUT_DIR = "Simulation_Testing/margin_analysis_reports_do_extended"
 
-LINE_PLOT_TITLE = "Phase margin vs. control effort priority for TDS controllers"
+LINE_PLOT_TITLE = "Phase margin vs. control effort priority for DO controllers"
 BOX_PLOT_TITLE = LINE_PLOT_TITLE
 # ==========================================
 

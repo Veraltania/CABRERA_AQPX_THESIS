@@ -45,8 +45,8 @@ def simulate_saturated_pi(plant, kp, ki, t_eval, setpoints, u_min=0.0, u_max=1.0
     return y_out, u_out
 
 def run_scipy_de_tuner(name, plant, min_kp, max_kp, min_ki, max_ki, tau, delay, weights, 
-                       target_sp=1.0, max_overshoot_limit=0.20):
-    """Uses SciPy's DE applying the realistic saturated simulation"""
+                       target_sp=1.0, max_overshoot_limit=0.20, min_pm=45.0):
+    """Uses SciPy's DE applying both realistic saturated simulation and frequency-domain constraints"""
     print(f"\n[Auto-Tuner] Running SciPy DE Optimization: {name}")
     
     T_sim = (tau * 3) + delay
@@ -60,6 +60,25 @@ def run_scipy_de_tuner(name, plant, min_kp, max_kp, min_ki, max_ki, tau, delay, 
         kp, ki = params
         penalty = 1e20
         
+        # --- 1. FREQUENCY DOMAIN ROBUSTNESS CHECK ---
+        try:
+            # Construct Continuous-Time PI Controller: C(s) = (Kp*s + Ki) / s
+            controller = ct.tf([kp, ki], [1.0, 0.0])
+            open_loop_sys = controller * plant
+            
+            # Compute stability margins
+            # margin() returns: Gain Margin, Phase Margin, Phase Crossover Freq, Gain Crossover Freq
+            gm, pm, wg, wp = ct.margin(open_loop_sys)
+            
+            # Hard constraint: Kill candidate if Phase Margin is less than our threshold or undefined
+            if np.isnan(pm) or pm < min_pm:
+                return penalty
+                
+        except Exception:
+            # If the transfer function math fails (e.g., singular matrices or invalid types), kill it
+            return penalty
+
+        # --- 2. TIME DOMAIN SIMULATION ---
         try:
             y_out, u_out = simulate_saturated_pi(plant, kp, ki, t_opt, sp_opt, u_min=0.0, u_max=1.0)
             
@@ -70,15 +89,14 @@ def run_scipy_de_tuner(name, plant, min_kp, max_kp, min_ki, max_ki, tau, delay, 
                 return penalty
                 
             # --- OVERSHOOT CALCULATION ---
-            # Peak overshoot is the maximum value minus the setpoint (1.0 in y_norm)
             peak_val = np.max(y_norm)
             actual_overshoot = max(0.0, peak_val - 1.0) 
             
-            # 1. Hard Constraint: If overshoot exceeds the limit, kill this candidate
+            # Hard Constraint: If overshoot exceeds the limit, kill this candidate
             if actual_overshoot > max_overshoot_limit:
                 return penalty
 
-            # 2. Stability Check: Kill candidates that oscillate wildly below zero
+            # Stability Check: Kill candidates that oscillate wildly below zero
             if np.min(y_norm) < -0.1:
                 return penalty
             # -----------------------------
@@ -87,8 +105,6 @@ def run_scipy_de_tuner(name, plant, min_kp, max_kp, min_ki, max_ki, tau, delay, 
             int_error = np.trapezoid(np.abs(error), t_opt)
             
             # --- THE PROPER NORMALIZATION: Total Variation ---
-            # Levels the playing field between Kp and Ki, but strictly punishes oscillation/chatter
-            # Prepend 0.0 to capture the initial jump at t=0
             u_with_initial = np.concatenate(([0.0], u_out))
             norm_effort = np.sum(np.abs(np.diff(u_with_initial)))
             
@@ -108,14 +124,14 @@ def run_scipy_de_tuner(name, plant, min_kp, max_kp, min_ki, max_ki, tau, delay, 
             norm_overshoot = int_overshoot / T_sim
             norm_rise_time = rise_time / avg_rise_time
             
-            # Kill candidates that are wildly unstable
+            # Kill candidates that are wildly unstable in the time domain
             if norm_error > 2.0 or norm_rise_time > 10.0:
                 return penalty
                 
             cost = (w_iae * norm_error) + (w_effort * norm_effort) + (w_os * norm_overshoot) + (w_rt * norm_rise_time)
             return cost
             
-        except Exception as e:
+        except Exception:
             return penalty
 
     bounds = [(min_kp, max_kp), (min_ki, max_ki)]

@@ -7,6 +7,12 @@ import warnings
 
 from scipy_de_tuner import run_scipy_de_tuner, simulate_saturated_pi
 
+plt.rcParams.update({
+    "font.family": "serif",
+    "font.serif": ["Times New Roman"],
+    "font.size": 10
+})
+
 def create_fopdt_sys(K, tau, delay, pade_order=2):
     """Creates a Transfer Function for FOPDT using Pade approximation for delay."""
     num, den = [K], [tau, 1]

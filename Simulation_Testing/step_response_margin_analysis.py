@@ -7,6 +7,12 @@ import matplotlib.pyplot as plt
 
 from scipy_de_tuner import run_scipy_de_tuner
 
+plt.rcParams.update({
+    "font.family": "serif",
+    "font.serif": ["Times New Roman"],
+    "font.size": 10
+})
+
 def create_fopdt_sys(K, tau, delay, pade_order=2):
     """Creates a Transfer Function for FOPDT using Pade approximation for delay."""
     num, den = [K], [tau, 1]
@@ -87,7 +93,7 @@ def generate_ieee_plots(output_dir, ce_pcts, pm_matrix):
     # IEEE plotting configurations
     plt.rcParams['font.family'] = 'serif'
     plt.rcParams['font.serif'] = ['Times New Roman']
-    plt.rcParams['font.size'] = 12
+    plt.rcParams['font.size'] = 10
     
     # Standard IEEE single column width: 3.5 inches
     fig_width = 3.5 
@@ -162,8 +168,8 @@ def main():
     # ==========================================
     # CONFIGURATION
     # ==========================================
-    INPUT_CSV_NAME = "tf_parameters_tds.csv"
-    FOLDER_NAME = "margin_analysis_reports_tds_extended"
+    INPUT_CSV_NAME = "tf_parameters_do.csv"
+    FOLDER_NAME = "margin_analysis_reports_do_extended"
     
     base_dir = os.path.dirname(os.path.abspath(__file__))
     input_csv = os.path.join(base_dir, INPUT_CSV_NAME)
