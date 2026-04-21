@@ -205,8 +205,8 @@ if __name__ == "__main__":
     # You can loop through multiple files easily here:
     target_files = [#'Simulation_Testing/simulation_graphs_comparison_do_1xcf/Control_Effort_table.csv',
                     #'Simulation_Testing/simulation_graphs_comparison_do_1xcf/IAE_table.csv',
-                    'Simulation_Testing/simulation_graphs_comparison_tds_1xcf/Control_Effort_table.csv',
-                    'Simulation_Testing/simulation_graphs_comparison_tds_1xcf/IAE_table.csv']
+                    "Simulation_Testing/simulation_graphs_tds_unit_step/tds_unit_step_iae.csv",
+                    "Simulation_Testing/simulation_graphs_tds_unit_step/tds_unit_step_control_effort.csv"]
     
     for file in target_files:
         print(f"\n{'='*50}")

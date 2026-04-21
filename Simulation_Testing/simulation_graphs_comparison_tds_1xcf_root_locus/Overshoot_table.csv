@@ -1,4 +1,4 @@
 Gain,TF_TDS_1,TF_TDS_2,TF_TDS_3
-DE-tuned,14.7624,13.1126,11.9163
+DE-tuned,15.1522,13.0987,11.6723
 Lambda-tuned ($\lambda$ = 3$\tau$),0,0,0
 "MATLAB pidtune(), balanced",13.8688,13.8304,13.8017

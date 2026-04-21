@@ -13,15 +13,12 @@ plt.rcParams.update({
     "font.size": 10
 })
 
-def create_fopdt_sys(K, tau, delay, pade_order=2):
-    """Creates a Transfer Function for FOPDT using Pade approximation for delay."""
+def create_fopdt_sys(K, tau, delay=0, pade_order=None):
+    """Creates a Transfer Function for FOPDT (Delay is ignored/set to 0)."""
     num, den = [K], [tau, 1]
     plant_linear = ct.tf(num, den)
     
-    if delay > 0:
-        num_delay, den_delay = ct.pade(delay, pade_order)
-        delay_tf = ct.tf(num_delay, den_delay)
-        return ct.series(delay_tf, plant_linear)
+    # Padé approximation has been removed; deadtime is treated as zero.
     return plant_linear
 
 def generate_setpoint_array(t, sequence_config):
@@ -218,7 +215,8 @@ def main():
         for key in aggregated_metrics:
             aggregated_metrics[key][tf_name] = {}
         
-        plant_params = {'K': tf_data['K'], 'tau': tf_data['tau'], 'delay': tf_data['delay']} 
+        # Override delay to 0.0 for pure FOPDT without deadtime
+        plant_params = {'K': tf_data['K'], 'tau': tf_data['tau'], 'delay': 0.0} 
         plant = create_fopdt_sys(**plant_params)
         
         target_sp = 1.0 if plant_params['K'] > 0 else -1.0
@@ -227,7 +225,7 @@ def main():
         seq_config = {
             'base_sp': 0.0, 
             'step_sp': target_sp,
-            'pre_step_delay': max(time_factor, plant_params['delay']) * 2, 
+            'pre_step_delay': time_factor * 2, # simplified since delay is 0
             'step_duration': time_factor * 8,
             'recovery_duration': time_factor * 8, 
             'cycles': 1
@@ -266,10 +264,6 @@ def main():
         fig_rl.suptitle(f'Root Locus Analysis - {tf_name}', fontsize=20, y=0.98)
 
         ax_y.plot(t_eval_hours, setpoints, 'k--', label='Reference Setpoint', alpha=0.6)
-
-        all_rl_reals = []
-        all_rl_imags = []
-        all_roots_arrays = []
 
         for idx, cfg in enumerate(configs):
             tuner_key = cfg["name"]
@@ -314,7 +308,6 @@ def main():
             L_nom = ct.series(C_nom, plant)
             
             roots, gains, k_marg, k_min_zeta, min_zeta_val = analyze_root_locus_metrics(L_nom)
-            all_roots_arrays.append(roots) # Save to extract y-axis bounds later
             
             if abs(Kp_nom) < 1e-6: 
                 marg_val = k_marg * Ki_nom if k_marg is not None else 0.0
@@ -335,11 +328,6 @@ def main():
             ol_poles = ct.poles(L_nom)
             ol_zeros = ct.zeros(L_nom)
             cl_poles = ct.poles(ct.feedback(L_nom))
-            
-            for pts in [ol_poles, ol_zeros, cl_poles]:
-                if len(pts) > 0:
-                    all_rl_reals.extend(np.real(pts))
-                    all_rl_imags.extend(np.imag(pts))
 
             if len(ol_zeros) > 0:
                 ax_rl.plot(np.real(ol_zeros), np.imag(ol_zeros), 'ko', markerfacecolor='none', 
@@ -354,8 +342,6 @@ def main():
             
             if k_min_zeta is not None and min_zeta_val is not None:
                 zeta_poles = ct.poles(ct.feedback(k_min_zeta * L_nom))
-                all_rl_reals.extend(np.real(zeta_poles))
-                all_rl_imags.extend(np.imag(zeta_poles))
                 ax_rl.plot(np.real(zeta_poles), np.imag(zeta_poles), 'd', color='darkorange', markersize=8, 
                            label=f'Min $\\zeta={min_zeta_val:.3f}$ (d, {gain_str}={zeta_gain_val:.3f})')
             
@@ -372,61 +358,60 @@ def main():
             if idx == 0:
                 ax_rl.set_ylabel('Imaginary Axis')
 
-        # ---------------------------
-        # 3. Apply Universal RL Axes (X and Y)
-        # ---------------------------
-        if all_rl_reals:
-            min_x = min(all_rl_reals)
-            max_x = max(all_rl_reals)
-            x_pad = (max_x - min_x) * 0.15
-            if x_pad < 1e-4: x_pad = 0.1  
+            # ---------------------------
+            # LOCAL AXIS SCALING 
+            # ---------------------------
+            local_reals = []
+            local_imags = []
             
-            # STRICTLY cap at 0.0 if there are no elements in the RHP
-            if max_x > 0:
-                right_lim = max_x + x_pad
-            else:
-                right_lim = 0.0
+            # Collect points only for THIS specific tuner subplot
+            for pts in [ol_poles, ol_zeros, cl_poles]:
+                if len(pts) > 0:
+                    local_reals.extend(np.real(pts))
+                    local_imags.extend(np.imag(pts))
+            
+            if k_min_zeta is not None and min_zeta_val is not None:
+                local_reals.extend(np.real(zeta_poles))
+                local_imags.extend(np.imag(zeta_poles))
                 
-            global_xlim = [min_x - x_pad, right_lim] 
-            
-            max_y = 0.0
-            for roots_array in all_roots_arrays:
-                valid_mask = (np.real(roots_array) >= global_xlim[0]) & (np.real(roots_array) <= global_xlim[1])
+            if local_reals:
+                min_x = min(local_reals)
+                max_x = max(local_reals)
+                x_range = max_x - min_x
+                
+                # Dynamic padding based on how spread out THIS tuner's poles are
+                pad_x = x_range * 0.2 if x_range > 1e-4 else 0.01
+                
+                left_lim = min_x - pad_x
+                right_lim = max(max_x + pad_x, 0.005) # Ensure origin is visible
+                ax_rl.set_xlim([left_lim, right_lim])
+                
+                # Y-axis scaling
+                max_y = max(np.abs(local_imags)) if local_imags else 0.0
+                
+                # Check locus heights specifically within our zoomed X window
+                valid_mask = (np.real(roots) >= left_lim) & (np.real(roots) <= right_lim)
                 if np.any(valid_mask):
-                    local_max = np.max(np.abs(np.imag(roots_array[valid_mask])))
-                    if local_max > max_y:
-                        max_y = local_max
-                        
-            if all_rl_imags:
-                max_y = max(max_y, max(np.abs(all_rl_imags)))
-            
-            y_pad = max_y * 0.15
-            if max_y < 1e-4: 
-                y_pad = (global_xlim[1] - global_xlim[0]) * 0.5 
-
-            global_ylim = [-(max_y + y_pad), (max_y + y_pad)]
-            
-            for idx, ax_rl in enumerate(axes_rl):
-                ax_rl.set_xlim(global_xlim)
-                ax_rl.set_ylim(global_ylim)
+                    locus_max_y = np.max(np.abs(np.imag(roots[valid_mask])))
+                    max_y = max(max_y, locus_max_y)
+                    
+                pad_y = max_y * 0.2 if max_y > 1e-4 else (right_lim - left_lim) * 0.5
+                ax_rl.set_ylim([-(max_y + pad_y), max_y + pad_y])
                 
-                # Draw the specific minimum zeta boundary for this subplot's tuner
-                tuner_key = configs[idx]["name"]
-                mz = aggregated_metrics['RL_Min_Zeta_Value'][tf_name].get(tuner_key, None)
+            # Draw the Zeta Boundary using the newly scaled limits
+            mz = aggregated_metrics['RL_Min_Zeta_Value'][tf_name].get(tuner_key, None)
+            if mz is not None and mz > 1e-4:
+                val = np.clip(mz, -1.0, 1.0)
+                slope = np.tan(np.arccos(val))
+                x_damp = np.linspace(ax_rl.get_xlim()[0], 0, 100)
+                y_damp = slope * np.abs(x_damp)
+                ax_rl.plot(x_damp, y_damp, 'k:', alpha=0.4, label=f'Min $\\zeta={mz:.2f}$ boundary')
+                ax_rl.plot(x_damp, -y_damp, 'k:', alpha=0.4)
                 
-                if mz is not None and mz > 1e-4:  # Avoid infinite slope at exactly zeta=0
-                    val = np.clip(mz, -1.0, 1.0)
-                    angle = np.arccos(val)
-                    slope = np.tan(angle)
-                    x_damp = np.linspace(global_xlim[0], 0, 100)
-                    y_damp = slope * np.abs(x_damp)
-                    ax_rl.plot(x_damp, y_damp, 'k:', alpha=0.4, label=f'Min $\\zeta={mz:.2f}$ boundary')
-                    ax_rl.plot(x_damp, -y_damp, 'k:', alpha=0.4)
-                
-                # Refresh legend to grab newly added boundary lines and remove duplicates
-                handles, labels = ax_rl.get_legend_handles_labels()
-                by_label = dict(zip(labels, handles))
-                ax_rl.legend(by_label.values(), by_label.keys(), loc='lower right', fontsize=9)
+            # Clean up the legend
+            handles, labels = ax_rl.get_legend_handles_labels()
+            by_label = dict(zip(labels, handles))
+            ax_rl.legend(by_label.values(), by_label.keys(), loc='lower right', fontsize=9)
 
         # Save Step Response figure
         ax_y.set_title(f'Step Response Comparison', fontsize=22, pad=20)
