@@ -5,7 +5,6 @@ import matplotlib.pyplot as plt
 import control as ct
 from scipy_de_tuner import run_scipy_de_tuner
 
-# Apply global font settings for Times New Roman, Size 10
 plt.rcParams['font.family'] = 'serif'
 plt.rcParams['font.serif'] = ['Times New Roman']
 plt.rcParams['font.size'] = 12

@@ -117,6 +117,6 @@ if __name__ == '__main__':
         factor=downscale_factor,
         pump_off_slices=pump_off_times,
         step_response_slices=step_response_times,
-        data_name="Dissolved Oxygen (mg/L)",
-        data_column="MCP_WQ_DO"
+        data_name="TDS",
+        data_column="MCP_WQ_TDS"
     )
