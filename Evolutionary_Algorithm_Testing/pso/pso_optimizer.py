@@ -16,7 +16,7 @@ class PSOOptimizer(EvolutionaryOptimizer):
 
     def optimize_round(self, round_num):
         best_sol_tracker = {'x': None, 'cost': float('inf'), 'raw': None}
-        particle_penalty = np.finfo(np.float64).max
+        particle_penalty = self.scalar_penalty
         
         run_state = {
             'best_cost': float('inf'),
