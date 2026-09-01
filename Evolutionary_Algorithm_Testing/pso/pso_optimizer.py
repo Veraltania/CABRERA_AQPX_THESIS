@@ -16,6 +16,7 @@ class PSOOptimizer(EvolutionaryOptimizer):
 
     def optimize_round(self, round_num):
         best_sol_tracker = {'x': None, 'cost': float('inf'), 'raw': None}
+        particle_penalty = np.finfo(np.float64).max
         
         run_state = {
             'best_cost': float('inf'),
@@ -28,12 +29,11 @@ class PSOOptimizer(EvolutionaryOptimizer):
             for p in particles:
                 Kp, Ki = p[0], p[1]
                 raw_costs = self.calculate_cost(Kp, Ki)
-                
-                if raw_costs[0] >= 1e8:
-                    weighted_cost = 1e9
+
+                if self.is_penalty_costs(raw_costs):
+                    weighted_cost = particle_penalty
                 else:
-                    weighted_cost = sum(w * c for w, c in zip(self.weights, raw_costs))
-                    
+                    weighted_cost = self.weighted_cost(raw_costs)
                     if weighted_cost < best_sol_tracker['cost']:
                         best_sol_tracker['cost'] = weighted_cost
                         best_sol_tracker['x'] = (Kp, Ki)
@@ -44,14 +44,17 @@ class PSOOptimizer(EvolutionaryOptimizer):
             costs_array = np.array(costs)
             current_best = np.min(costs_array)
 
-            if current_best < (run_state['best_cost'] - self.tol):
-                run_state['patience_counter'] = 0
-                run_state['best_cost'] = current_best
-            else:
-                if run_state['best_cost'] < 1e8:
+            if current_best < particle_penalty:
+                if current_best < (run_state['best_cost'] - self.tol):
+                    run_state['patience_counter'] = 0
+                    run_state['best_cost'] = current_best
+                elif np.isfinite(run_state['best_cost']):
                     run_state['patience_counter'] += 1
 
-            run_state['history'].append(run_state['best_cost'] if run_state['best_cost'] < 1e8 else 1e9)
+            run_state['history'].append(
+                run_state['best_cost'] if np.isfinite(run_state['best_cost'])
+                else self.scalar_penalty
+            )
 
             if run_state['patience_counter'] >= self.patience:
                 raise EarlyStopping()
@@ -82,8 +85,8 @@ class PSOOptimizer(EvolutionaryOptimizer):
 
         if best_sol_tracker['x'] is None:
             final_Kp, final_Ki = 0.0, 0.0
-            best_sol_tracker['cost'] = 1e9
-            best_sol_tracker['raw'] = (1e9, 1e9, 1e9, 1e9)
+            best_sol_tracker['cost'] = self.scalar_penalty
+            best_sol_tracker['raw'] = self.penalty_costs
         else:
             final_Kp, final_Ki = best_sol_tracker['x']
 

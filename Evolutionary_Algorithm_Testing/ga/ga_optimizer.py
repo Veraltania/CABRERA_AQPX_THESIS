@@ -17,11 +17,11 @@ class GAOptimizer(EvolutionaryOptimizer):
         def fitness_wrapper(ga_instance, solution, solution_idx):
             Kp, Ki = solution[0], solution[1]
             raw_costs = self.calculate_cost(Kp, Ki)
-            
-            if raw_costs[0] >= 1e8:
-                return -1e9 
 
-            weighted_cost = sum(w * c for w, c in zip(self.weights, raw_costs))
+            if self.is_penalty_costs(raw_costs):
+                return -self.scalar_penalty
+
+            weighted_cost = self.weighted_cost(raw_costs)
 
             if weighted_cost < best_sol_tracker['cost']:
                 best_sol_tracker['cost'] = weighted_cost
@@ -29,6 +29,8 @@ class GAOptimizer(EvolutionaryOptimizer):
                 best_sol_tracker['raw'] = raw_costs
 
             return 1.0 / (weighted_cost + 1e-6)
+
+        scalar_penalty = self.scalar_penalty
 
         class Tracker:
             def __init__(self, patience, tol):
@@ -47,7 +49,7 @@ class GAOptimizer(EvolutionaryOptimizer):
                     self.counter += 1
                 
                 if self.best_fitness <= 0:
-                    self.history.append(1e9)
+                    self.history.append(scalar_penalty)
                 else:
                     self.history.append((1.0 / self.best_fitness) - 1e-6)
 
@@ -79,8 +81,8 @@ class GAOptimizer(EvolutionaryOptimizer):
         
         if best_sol_tracker['x'] is None:
             final_Kp, final_Ki = 0.0, 0.0
-            best_sol_tracker['cost'] = 1e9
-            best_sol_tracker['raw'] = (1e9, 1e9, 1e9, 1e9)
+            best_sol_tracker['cost'] = self.scalar_penalty
+            best_sol_tracker['raw'] = self.penalty_costs
         else:
             final_Kp, final_Ki = best_sol_tracker['x']
             

@@ -15,11 +15,11 @@ class DEOptimizer(EvolutionaryOptimizer):
         def scalar_cost_wrapper(x):
             Kp, Ki = x[0], x[1]
             raw_costs = self.calculate_cost(Kp, Ki)
-            
-            if raw_costs[0] >= 1e8:
-                return 1e9
 
-            weighted_cost = sum(w * c for w, c in zip(self.weights, raw_costs))
+            if self.is_penalty_costs(raw_costs):
+                return np.inf
+
+            weighted_cost = self.weighted_cost(raw_costs)
         
             if weighted_cost < best_sol_tracker['cost']:
                 best_sol_tracker['cost'] = weighted_cost
@@ -27,6 +27,8 @@ class DEOptimizer(EvolutionaryOptimizer):
                 best_sol_tracker['raw'] = raw_costs
 
             return weighted_cost
+
+        scalar_penalty = self.scalar_penalty
 
         class Tracker:
             def __init__(self, patience, tol):
@@ -38,14 +40,17 @@ class DEOptimizer(EvolutionaryOptimizer):
 
             def callback(self, xk, convergence=None):
                 cost = scalar_cost_wrapper(xk)
-                if cost < 1e8:
+                if np.isfinite(cost):
                     if cost < (self.best_cost - self.tol):
                         self.best_cost = cost
                         self.counter = 0
                     else:
                         self.counter += 1
                 
-                self.history.append(self.best_cost if self.best_cost < 1e8 else 1e9)
+                self.history.append(
+                    self.best_cost if np.isfinite(self.best_cost)
+                    else scalar_penalty
+                )
                 if self.counter >= self.patience:
                     return True
 
@@ -68,8 +73,8 @@ class DEOptimizer(EvolutionaryOptimizer):
 
         if best_sol_tracker['x'] is None:
             final_Kp, final_Ki = 0.0, 0.0
-            best_sol_tracker['cost'] = 1e9
-            best_sol_tracker['raw'] = (1e9, 1e9, 1e9, 1e9)
+            best_sol_tracker['cost'] = self.scalar_penalty
+            best_sol_tracker['raw'] = self.penalty_costs
         else:
             final_Kp, final_Ki = best_sol_tracker['x']
 
