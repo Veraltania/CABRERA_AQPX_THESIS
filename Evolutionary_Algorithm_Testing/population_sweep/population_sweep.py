@@ -27,6 +27,13 @@ SUMMARY_COLUMNS = [
     "Standard Deviation",
     "Mean Convergence Iteration"
 ]
+TRANSFER_FUNCTION_SUMMARY_COLUMNS = [
+    "Transfer Function",
+    "Algorithm",
+    "Mean Final Cost",
+    "Standard Deviation",
+    "Mean Convergence Iteration"
+]
 PENALTY_COST_THRESHOLD = 1e8
 
 
@@ -212,6 +219,35 @@ def summarize_across_populations(df_results):
     return summary[SUMMARY_COLUMNS]
 
 
+def summarize_transfer_function(df_results, transfer_function):
+    summary = summarize_across_populations(df_results)
+    if summary.empty:
+        return pd.DataFrame(columns=TRANSFER_FUNCTION_SUMMARY_COLUMNS)
+
+    summary = summary.drop(columns="Population Size")
+    summary.insert(0, "Transfer Function", transfer_function)
+    return summary[TRANSFER_FUNCTION_SUMMARY_COLUMNS]
+
+
+def save_transfer_function_summary(summaries, batch_output_dir):
+    valid_summaries = [summary for summary in summaries if not summary.empty]
+    if valid_summaries:
+        combined_summary = pd.concat(valid_summaries, ignore_index=True)
+    else:
+        combined_summary = pd.DataFrame(
+            columns=TRANSFER_FUNCTION_SUMMARY_COLUMNS
+        )
+
+    batch_output_dir = Path(batch_output_dir)
+    batch_output_dir.mkdir(parents=True, exist_ok=True)
+    summary_path = (
+        batch_output_dir / "algorithm_summary_by_transfer_function.csv"
+    )
+    combined_summary.to_csv(summary_path, index=False)
+    print(f"Transfer-function summary saved to: {summary_path}")
+    return combined_summary
+
+
 def save_summary_reports(df_results, base_output_dir):
     base_output_dir = Path(base_output_dir)
     population_summary = summarize_results(df_results)
@@ -267,9 +303,9 @@ if __name__ == "__main__":
     total_cores = multiprocessing.cpu_count()
     num_cores = max(1, math.floor(total_cores * 0.75))
 
-    START_POP = 30
-    END_POP = 50
-    STEP_SIZE = 20
+    START_POP = 10
+    END_POP = 100
+    STEP_SIZE = 10
 
     shared_config = {
         "patience_limit": 25,
@@ -304,7 +340,7 @@ if __name__ == "__main__":
     pop_sizes = list(range(START_POP, END_POP + 1, STEP_SIZE))
     if pop_sizes[-1] != END_POP: pop_sizes.append(END_POP)
 
-    batch_dir = "BATCH_OPENLOOP_CONTROL_EFFORT_V2"
+    batch_dir = "BATCH_OPENLOOP_CONTROL_EFFORT"
     sweep_type = "population_sweep"
 
     # --- DEFINING TRANSFER FUNCTIONS WITH SPECIFIC Kp & Ki BOUNDS ---
@@ -360,11 +396,28 @@ if __name__ == "__main__":
             'tf_n_pade': 2, 'computed_delay': 0.05, 'is_reverse_acting': False, 
             'min_kp': min_kp_do, 'max_kp': max_kp_do, 'min_ki': min_ki_do, 'max_ki': max_ki_do
         },
+        # Reverse-acting Systems:
+        f"{sweep_type}_tds_feb09_10": {
+            'tf_num': [-21.082], 'tf_den': [71160.91, 1], 'tf_delay': 0,
+            'tf_n_pade': 2, 'computed_delay': 0.05, 'is_reverse_acting': True, 
+            'min_kp': min_kp_tds, 'max_kp': max_kp_tds, 'min_ki': min_ki_tds, 'max_ki': max_ki_tds
+        },
+        f"{sweep_type}_tds_feb10_11": {
+            'tf_num': [-15.519], 'tf_den': [40156.08, 1], 'tf_delay': 0,
+            'tf_n_pade': 2, 'computed_delay': 0.05, 'is_reverse_acting': True, 
+            'min_kp': min_kp_tds, 'max_kp': max_kp_tds, 'min_ki': min_ki_tds, 'max_ki': max_ki_tds
+        },
+        f"{sweep_type}_tds_feb11_12": {
+            'tf_num': [-12.458], 'tf_den': [16825.29, 1], 'tf_delay': 0,
+            'tf_n_pade': 2, 'computed_delay': 0.05, 'is_reverse_acting': True, 
+            'min_kp': min_kp_tds, 'max_kp': max_kp_tds, 'min_ki': min_ki_tds, 'max_ki': max_ki_tds
+        }
     }
 
 
     total_global_start_time = time.time()
     script_dir = Path(__file__).parent.resolve()
+    transfer_function_summaries = []
 
     with multiprocessing.Pool(processes=num_cores) as pool:
         for idx, (base_dir, tf_params) in enumerate(transfer_functions.items()):
@@ -407,6 +460,12 @@ if __name__ == "__main__":
 
             population_summary = save_summary_reports(
                 df_results, BASE_OUTPUT_DIR
+            )
+            transfer_function_summaries.append(
+                summarize_transfer_function(df_results, base_dir)
+            )
+            save_transfer_function_summary(
+                transfer_function_summaries, script_dir / batch_dir
             )
 
             # --- COST HISTORY GRAPHING WITH BROKEN Y-AXIS ---
