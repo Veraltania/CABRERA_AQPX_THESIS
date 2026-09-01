@@ -20,6 +20,40 @@ except ImportError as e:
     exit(1)
 
 ALGO_MAP = {'DE': DEOptimizer, 'GA': GAOptimizer, 'PSO': PSOOptimizer}
+SUMMARY_COLUMNS = [
+    "Algorithm",
+    "Population Size",
+    "Mean Final Cost",
+    "Standard Deviation",
+    "Mean Convergence Iteration"
+]
+PENALTY_COST_THRESHOLD = 1e8
+
+
+def read_detailed_log(log_path):
+    df_log = pd.read_csv(log_path)
+    result_columns = {
+        "Iterations": "iters",
+        "Best_Cost": "cost",
+        "Kp": "kp",
+        "Ki": "ki"
+    }
+
+    missing_columns = set(result_columns) - set(df_log.columns)
+    if missing_columns:
+        raise ValueError(
+            f"Detailed log is missing columns: {sorted(missing_columns)}"
+        )
+
+    clean_log = df_log[list(result_columns)].copy()
+    for column in result_columns:
+        clean_log[column] = pd.to_numeric(clean_log[column], errors="coerce")
+    clean_log = clean_log.dropna()
+
+    return {
+        output_name: clean_log[column].tolist()
+        for column, output_name in result_columns.items()
+    }
 
 # --- 1. WORKER FUNCTION ---
 def worker(task):
@@ -34,11 +68,11 @@ def worker(task):
     if found_files:
         try:
             latest_file = max(found_files, key=os.path.getmtime)
-            df_log = pd.read_csv(latest_file, header=None)
-            iter_results = df_log.iloc[:, 1].tolist()
-            cost_results = df_log.iloc[:, 2].tolist()
-            kp_results = df_log.iloc[:, 3].tolist()
-            ki_results = df_log.iloc[:, 4].tolist()
+            log_results = read_detailed_log(latest_file)
+            iter_results = log_results["iters"]
+            cost_results = log_results["cost"]
+            kp_results = log_results["kp"]
+            ki_results = log_results["ki"]
         except Exception as e:
             print(f"Error reading existing CSV for {algo_name} Pop {pop_size}: {e}")
             cost_results, kp_results, ki_results, iter_results = [], [], [], []
@@ -96,11 +130,11 @@ def worker(task):
     if found_files:
         try:
             latest_file = max(found_files, key=os.path.getmtime)
-            df_log = pd.read_csv(latest_file, header=None)
-            iter_results = df_log.iloc[:, 1].tolist()
-            cost_results = df_log.iloc[:, 2].tolist()
-            kp_results = df_log.iloc[:, 3].tolist()
-            ki_results = df_log.iloc[:, 4].tolist()
+            log_results = read_detailed_log(latest_file)
+            iter_results = log_results["iters"]
+            cost_results = log_results["cost"]
+            kp_results = log_results["kp"]
+            ki_results = log_results["ki"]
         except Exception as e:
             print(f"Error reading CSV for {algo_name} Pop {pop_size}: {e}")
 
@@ -117,6 +151,92 @@ def worker(task):
 
 
 # --- 2. DATA PROCESSING ---
+def prepare_summary_data(df_results):
+    required_columns = [
+        "Algorithm", "Population Size", "Final_Cost", "Iterations"
+    ]
+    if df_results.empty or not set(required_columns).issubset(df_results.columns):
+        return pd.DataFrame(columns=required_columns)
+
+    clean_results = df_results[required_columns].copy()
+    for column in ["Population Size", "Final_Cost", "Iterations"]:
+        clean_results[column] = pd.to_numeric(
+            clean_results[column], errors="coerce"
+        )
+
+    clean_results = clean_results.dropna(subset=required_columns)
+    clean_results = clean_results[
+        np.isfinite(clean_results["Final_Cost"])
+        & np.isfinite(clean_results["Iterations"])
+        & (clean_results["Final_Cost"] < PENALTY_COST_THRESHOLD)
+    ]
+    return clean_results
+
+
+def summarize_results(df_results):
+    clean_results = prepare_summary_data(df_results)
+    if clean_results.empty:
+        return pd.DataFrame(columns=SUMMARY_COLUMNS)
+
+    return (
+        clean_results
+        .groupby(["Algorithm", "Population Size"], as_index=False)
+        .agg(
+            **{
+                "Mean Final Cost": ("Final_Cost", "mean"),
+                "Standard Deviation": ("Final_Cost", "std"),
+                "Mean Convergence Iteration": ("Iterations", "mean")
+            }
+        )
+        [SUMMARY_COLUMNS]
+    )
+
+
+def summarize_across_populations(df_results):
+    clean_results = prepare_summary_data(df_results)
+    if clean_results.empty:
+        return pd.DataFrame(columns=SUMMARY_COLUMNS)
+
+    summary = (
+        clean_results
+        .groupby("Algorithm", as_index=False)
+        .agg(
+            **{
+                "Mean Final Cost": ("Final_Cost", "mean"),
+                "Standard Deviation": ("Final_Cost", "std"),
+                "Mean Convergence Iteration": ("Iterations", "mean")
+            }
+        )
+    )
+    summary.insert(1, "Population Size", "All Populations")
+    return summary[SUMMARY_COLUMNS]
+
+
+def save_summary_reports(df_results, base_output_dir):
+    base_output_dir = Path(base_output_dir)
+    population_summary = summarize_results(df_results)
+
+    for pop_size in population_summary["Population Size"].unique():
+        pop_summary = population_summary[
+            population_summary["Population Size"] == pop_size
+        ]
+        summary_path = (
+            base_output_dir / f"algorithm_summary_pop_{int(pop_size):03d}.csv"
+        )
+        pop_summary.to_csv(summary_path, index=False)
+
+    overall_summary = summarize_across_populations(df_results)
+    combined_summary = pd.concat(
+        [population_summary, overall_summary], ignore_index=True
+    )
+    combined_summary.to_csv(
+        base_output_dir / "algorithm_summary_all_populations.csv",
+        index=False
+    )
+    print(f"Summary reports saved to: {base_output_dir}")
+    return population_summary
+
+
 def save_checkpoint(all_data, base_output_dir):
     rows = []
     for entry in all_data:
@@ -184,7 +304,7 @@ if __name__ == "__main__":
     pop_sizes = list(range(START_POP, END_POP + 1, STEP_SIZE))
     if pop_sizes[-1] != END_POP: pop_sizes.append(END_POP)
 
-    batch_dir = "BATCH_OPENLOOP_CONTROL_EFFORT"
+    batch_dir = "BATCH_OPENLOOP_CONTROL_EFFORT_V2"
     sweep_type = "population_sweep"
 
     # --- DEFINING TRANSFER FUNCTIONS WITH SPECIFIC Kp & Ki BOUNDS ---
@@ -240,22 +360,6 @@ if __name__ == "__main__":
             'tf_n_pade': 2, 'computed_delay': 0.05, 'is_reverse_acting': False, 
             'min_kp': min_kp_do, 'max_kp': max_kp_do, 'min_ki': min_ki_do, 'max_ki': max_ki_do
         },
-        # Reverse-acting Systems:
-        f"{sweep_type}_tds_feb09_10": {
-            'tf_num': [-21.082], 'tf_den': [71160.91, 1], 'tf_delay': 0,
-            'tf_n_pade': 2, 'computed_delay': 0.05, 'is_reverse_acting': True, 
-            'min_kp': min_kp_tds, 'max_kp': max_kp_tds, 'min_ki': min_ki_tds, 'max_ki': max_ki_tds
-        },
-        f"{sweep_type}_tds_feb10_11": {
-            'tf_num': [-15.519], 'tf_den': [40156.08, 1], 'tf_delay': 0,
-            'tf_n_pade': 2, 'computed_delay': 0.05, 'is_reverse_acting': True, 
-            'min_kp': min_kp_tds, 'max_kp': max_kp_tds, 'min_ki': min_ki_tds, 'max_ki': max_ki_tds
-        },
-        f"{sweep_type}_tds_feb11_12": {
-            'tf_num': [-12.458], 'tf_den': [16825.29, 1], 'tf_delay': 0,
-            'tf_n_pade': 2, 'computed_delay': 0.05, 'is_reverse_acting': True, 
-            'min_kp': min_kp_tds, 'max_kp': max_kp_tds, 'min_ki': min_ki_tds, 'max_ki': max_ki_tds
-        }
     }
 
 
@@ -273,22 +377,37 @@ if __name__ == "__main__":
 
             os.makedirs(BASE_OUTPUT_DIR, exist_ok=True)
 
-            existing_checkpoints = glob.glob(os.path.join(BASE_OUTPUT_DIR, "checkpoint_sweep_*.csv"))
-            if existing_checkpoints:
-                print(f"[RESUME] Skipping TF {idx + 1} ({base_dir}): Master checkpoint already exists.")
-                continue
-
             start_time_sec = time.time()
             start_datetime = datetime.now()
             timestamp_str = start_datetime.strftime('%Y%m%d_%H%M%S')
-            print(f"--- SWEEP STARTED: {start_datetime.strftime('%Y-%m-%d %H:%M:%S')} ---")
-            
-            tasks = [(algo, size, shared_config, tf_params, BASE_OUTPUT_DIR, algo_specific_configs.get(algo, {}))
-                     for algo in ALGO_MAP.keys()
-                     for size in pop_sizes]
+            existing_checkpoints = glob.glob(os.path.join(BASE_OUTPUT_DIR, "checkpoint_sweep_*.csv"))
+            if existing_checkpoints:
+                latest_checkpoint = max(existing_checkpoints, key=os.path.getmtime)
+                print(
+                    f"[RESUME] Loading checkpoint for TF {idx + 1} "
+                    f"({base_dir}): {latest_checkpoint}"
+                )
+                df_results = pd.read_csv(latest_checkpoint)
+                raw_results = []
+            else:
+                print(f"--- SWEEP STARTED: {start_datetime.strftime('%Y-%m-%d %H:%M:%S')} ---")
+                tasks = [
+                    (
+                        algo, size, shared_config, tf_params, BASE_OUTPUT_DIR,
+                        algo_specific_configs.get(algo, {})
+                    )
+                    for algo in ALGO_MAP.keys()
+                    for size in pop_sizes
+                ]
 
-            raw_results = list(tqdm(pool.imap(worker, tasks), total=len(tasks)))
-            df_results = save_checkpoint(raw_results, BASE_OUTPUT_DIR)
+                raw_results = list(
+                    tqdm(pool.imap(worker, tasks), total=len(tasks))
+                )
+                df_results = save_checkpoint(raw_results, BASE_OUTPUT_DIR)
+
+            population_summary = save_summary_reports(
+                df_results, BASE_OUTPUT_DIR
+            )
 
             # --- COST HISTORY GRAPHING WITH BROKEN Y-AXIS ---
             print("\nGenerating combined cost history graphs for each population size...")
@@ -336,6 +455,20 @@ if __name__ == "__main__":
                 for algo, df_hist in loaded_data.items():
                     last_iter = df_hist['Iteration'].iloc[-1]
                     last_cost = df_hist['Cost'].iloc[-1]
+                    algo_summary = population_summary[
+                        (population_summary["Algorithm"] == algo)
+                        & (population_summary["Population Size"] == pop_size)
+                    ]
+
+                    if algo_summary.empty:
+                        legend_label = f"{algo} (Final Cost: {last_cost:.4f})"
+                    else:
+                        summary_row = algo_summary.iloc[0]
+                        legend_label = (
+                            f"{algo} ($\\mu$={summary_row['Mean Final Cost']:.4f}, "
+                            f"$\\sigma$={summary_row['Standard Deviation']:.4f}, "
+                            f"mean iter={summary_row['Mean Convergence Iteration']:.1f})"
+                        )
 
                     if last_iter < target_max_iter:
                         pad_iters = list(range(int(last_iter) + 1, target_max_iter + 1))
@@ -344,7 +477,7 @@ if __name__ == "__main__":
 
                     # Plot on Top
                     ax1.plot(df_hist['Iteration'], df_hist['Cost'], linewidth=2.5, 
-                             color=color_map.get(algo, 'black'), label=f"{algo} (Final Cost: {last_cost:.4f})")
+                             color=color_map.get(algo, 'black'), label=legend_label)
                     # Plot on Bottom
                     ax2.plot(df_hist['Iteration'], df_hist['Cost'], linewidth=2.5, color=color_map.get(algo, 'black'))
 
@@ -380,7 +513,7 @@ if __name__ == "__main__":
                 
                 ax1.grid(True, which='both', linestyle=':', linewidth=0.7)
                 ax2.grid(True, which='both', linestyle=':', linewidth=0.7)
-                ax1.legend(loc='upper right', fontsize=11)
+                ax1.legend(loc='upper right', fontsize=9)
 
                 plot_path = BASE_OUTPUT_DIR / f'combined_cost_history_pop_{pop_size:03d}.png'
                 plt.savefig(plot_path, dpi=300, bbox_inches='tight')
