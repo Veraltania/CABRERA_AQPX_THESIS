@@ -63,12 +63,23 @@ class DEOptimizer(EvolutionaryOptimizer):
         
         # Applying boundaries extracted from config in base class
         bounds = [(self.min_kp, self.max_kp), (self.min_ki, self.max_ki)]
+        free_parameters = sum(lower != upper for lower, upper in bounds)
+        if free_parameters == 0:
+            raise ValueError('DE requires at least one non-fixed parameter')
+        if self.pop_size < 5 or self.pop_size % free_parameters != 0:
+            raise ValueError(
+                'DE population_size must be at least 5 and divisible by '
+                f'the number of free parameters ({free_parameters})'
+            )
+        scipy_popsize = self.pop_size // free_parameters
 
         result = differential_evolution(
             scalar_cost_wrapper,
             bounds,
             maxiter=self.max_iters,
-            popsize=self.pop_size,
+            # SciPy treats popsize as a multiplier, while population_size in
+            # the experiment configuration is the requested individual count.
+            popsize=scipy_popsize,
             mutation=self.mutation,
             recombination=self.recombination,
             strategy=self.strategy,

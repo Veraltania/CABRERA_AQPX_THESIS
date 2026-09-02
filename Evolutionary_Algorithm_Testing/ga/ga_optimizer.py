@@ -61,13 +61,9 @@ class GAOptimizer(EvolutionaryOptimizer):
         )
 
         def convergence_callback(ga_instance):
-            best_fitness = ga_instance.best_solution()[1]
-            if np.isfinite(best_fitness) and best_fitness > 0:
-                current_best_cost = (1.0 / best_fitness) - 1e-6
-            else:
-                current_best_cost = self.scalar_penalty
-
-            if tracker.update(current_best_cost):
+            # Use the directly evaluated scalar cost. Inverting reciprocal
+            # fitness can change strict comparisons at the tolerance boundary.
+            if tracker.update(best_sol_tracker['cost']):
                 return "stop"
         
         # Applying boundaries extracted from config in base class
