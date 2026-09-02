@@ -2,6 +2,32 @@ import pygad
 import numpy as np
 from Evolutionary_Algorithm_Testing.ea_optimizer import EvolutionaryOptimizer
 
+
+class _CostConvergenceTracker:
+    """Track one cost-based patience rule shared by all optimizers."""
+
+    def __init__(self, patience, tolerance, penalty_cost):
+        self.patience = patience
+        self.tolerance = tolerance
+        self.penalty_cost = penalty_cost
+        self.counter = 0
+        self.best_cost = float('inf')
+        self.history = []
+
+    def update(self, current_best):
+        if not np.isfinite(current_best):
+            current_best = self.penalty_cost
+
+        if current_best < (self.best_cost - self.tolerance):
+            self.best_cost = current_best
+            self.counter = 0
+        else:
+            self.counter += 1
+
+        self.history.append(self.best_cost)
+        return self.counter >= self.patience
+
+
 class GAOptimizer(EvolutionaryOptimizer):
     def __init__(self, config, tf_params):
         super().__init__(config, tf_params)
@@ -30,33 +56,19 @@ class GAOptimizer(EvolutionaryOptimizer):
 
             return 1.0 / (weighted_cost + 1e-6)
 
-        scalar_penalty = self.scalar_penalty
+        tracker = _CostConvergenceTracker(
+            self.patience, self.tol, self.scalar_penalty
+        )
 
-        class Tracker:
-            def __init__(self, patience, tol):
-                self.patience = patience
-                self.tol = tol
-                self.counter = 0
-                self.best_fitness = -float('inf')
-                self.history = []
+        def convergence_callback(ga_instance):
+            best_fitness = ga_instance.best_solution()[1]
+            if np.isfinite(best_fitness) and best_fitness > 0:
+                current_best_cost = (1.0 / best_fitness) - 1e-6
+            else:
+                current_best_cost = self.scalar_penalty
 
-            def callback(self, ga_instance):
-                best_fitness = ga_instance.best_solution()[1]
-                if best_fitness > (self.best_fitness + self.tol):
-                    self.best_fitness = best_fitness
-                    self.counter = 0
-                else:
-                    self.counter += 1
-                
-                if self.best_fitness <= 0:
-                    self.history.append(scalar_penalty)
-                else:
-                    self.history.append((1.0 / self.best_fitness) - 1e-6)
-
-                if self.counter >= self.patience:
-                    return "stop"
-
-        tracker = Tracker(self.patience, self.tol)
+            if tracker.update(current_best_cost):
+                return "stop"
         
         # Applying boundaries extracted from config in base class
         bounds = [{'low': self.min_kp, 'high': self.max_kp}, {'low': self.min_ki, 'high': self.max_ki}]
@@ -72,7 +84,7 @@ class GAOptimizer(EvolutionaryOptimizer):
             keep_elitism=self.keep_elitism,
             crossover_type=self.crossover_type,
             crossover_probability=self.crossover_probability,
-            on_generation=tracker.callback,
+            on_generation=convergence_callback,
             suppress_warnings=True
         )
 

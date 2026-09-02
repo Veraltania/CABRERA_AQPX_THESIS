@@ -2,6 +2,32 @@ import numpy as np
 import pyswarms as ps
 from Evolutionary_Algorithm_Testing.ea_optimizer import EvolutionaryOptimizer
 
+
+class _CostConvergenceTracker:
+    """Track one cost-based patience rule shared by all optimizers."""
+
+    def __init__(self, patience, tolerance, penalty_cost):
+        self.patience = patience
+        self.tolerance = tolerance
+        self.penalty_cost = penalty_cost
+        self.counter = 0
+        self.best_cost = float('inf')
+        self.history = []
+
+    def update(self, current_best):
+        if not np.isfinite(current_best):
+            current_best = self.penalty_cost
+
+        if current_best < (self.best_cost - self.tolerance):
+            self.best_cost = current_best
+            self.counter = 0
+        else:
+            self.counter += 1
+
+        self.history.append(self.best_cost)
+        return self.counter >= self.patience
+
+
 class EarlyStopping(Exception):
     pass
 
@@ -18,11 +44,9 @@ class PSOOptimizer(EvolutionaryOptimizer):
         best_sol_tracker = {'x': None, 'cost': float('inf'), 'raw': None}
         particle_penalty = self.scalar_penalty
         
-        run_state = {
-            'best_cost': float('inf'),
-            'patience_counter': 0,
-            'history': []
-        }
+        tracker = _CostConvergenceTracker(
+            self.patience, self.tol, self.scalar_penalty
+        )
 
         def objective_function(particles):
             costs = []
@@ -44,19 +68,7 @@ class PSOOptimizer(EvolutionaryOptimizer):
             costs_array = np.array(costs)
             current_best = np.min(costs_array)
 
-            if current_best < particle_penalty:
-                if current_best < (run_state['best_cost'] - self.tol):
-                    run_state['patience_counter'] = 0
-                    run_state['best_cost'] = current_best
-                elif np.isfinite(run_state['best_cost']):
-                    run_state['patience_counter'] += 1
-
-            run_state['history'].append(
-                run_state['best_cost'] if np.isfinite(run_state['best_cost'])
-                else self.scalar_penalty
-            )
-
-            if run_state['patience_counter'] >= self.patience:
+            if tracker.update(current_best):
                 raise EarlyStopping()
 
             return costs_array
@@ -81,7 +93,7 @@ class PSOOptimizer(EvolutionaryOptimizer):
         try:
             _ = optimizer.optimize(objective_function, iters=self.max_iters, verbose=False)
         except EarlyStopping:
-            iterations_run = len(run_state['history'])
+            iterations_run = len(tracker.history)
 
         if best_sol_tracker['x'] is None:
             final_Kp, final_Ki = 0.0, 0.0
@@ -90,4 +102,4 @@ class PSOOptimizer(EvolutionaryOptimizer):
         else:
             final_Kp, final_Ki = best_sol_tracker['x']
 
-        return (final_Kp, final_Ki, best_sol_tracker['cost'], best_sol_tracker['raw']), iterations_run, run_state['history']
+        return (final_Kp, final_Ki, best_sol_tracker['cost'], best_sol_tracker['raw']), iterations_run, tracker.history

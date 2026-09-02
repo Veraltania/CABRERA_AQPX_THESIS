@@ -2,6 +2,32 @@ import numpy as np
 from scipy.optimize import differential_evolution
 from Evolutionary_Algorithm_Testing.ea_optimizer import EvolutionaryOptimizer
 
+
+class _CostConvergenceTracker:
+    """Track one cost-based patience rule shared by all optimizers."""
+
+    def __init__(self, patience, tolerance, penalty_cost):
+        self.patience = patience
+        self.tolerance = tolerance
+        self.penalty_cost = penalty_cost
+        self.counter = 0
+        self.best_cost = float('inf')
+        self.history = []
+
+    def update(self, current_best):
+        if not np.isfinite(current_best):
+            current_best = self.penalty_cost
+
+        if current_best < (self.best_cost - self.tolerance):
+            self.best_cost = current_best
+            self.counter = 0
+        else:
+            self.counter += 1
+
+        self.history.append(self.best_cost)
+        return self.counter >= self.patience
+
+
 class DEOptimizer(EvolutionaryOptimizer):
     def __init__(self, config, tf_params):
         super().__init__(config, tf_params)
@@ -28,33 +54,12 @@ class DEOptimizer(EvolutionaryOptimizer):
 
             return weighted_cost
 
-        scalar_penalty = self.scalar_penalty
+        tracker = _CostConvergenceTracker(
+            self.patience, self.tol, self.scalar_penalty
+        )
 
-        class Tracker:
-            def __init__(self, patience, tol):
-                self.patience = patience
-                self.tol = tol
-                self.counter = 0
-                self.best_cost = float('inf')
-                self.history = []
-
-            def callback(self, xk, convergence=None):
-                cost = scalar_cost_wrapper(xk)
-                if np.isfinite(cost):
-                    if cost < (self.best_cost - self.tol):
-                        self.best_cost = cost
-                        self.counter = 0
-                    else:
-                        self.counter += 1
-                
-                self.history.append(
-                    self.best_cost if np.isfinite(self.best_cost)
-                    else scalar_penalty
-                )
-                if self.counter >= self.patience:
-                    return True
-
-        tracker = Tracker(self.patience, self.tol)
+        def convergence_callback(xk, convergence=None):
+            return tracker.update(scalar_cost_wrapper(xk))
         
         # Applying boundaries extracted from config in base class
         bounds = [(self.min_kp, self.max_kp), (self.min_ki, self.max_ki)]
@@ -67,7 +72,11 @@ class DEOptimizer(EvolutionaryOptimizer):
             mutation=self.mutation,
             recombination=self.recombination,
             strategy=self.strategy,
-            callback=tracker.callback,
+            callback=convergence_callback,
+            # Disable SciPy's population-dispersion stop so all algorithms
+            # use only the shared cost-patience rule and max_iters.
+            tol=0.0,
+            atol=-np.inf,
             polish=False
         )
 
