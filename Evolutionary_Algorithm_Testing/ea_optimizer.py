@@ -168,7 +168,7 @@ def fast_fbest_diffeq(
 
     # --- TOTAL VARIATION (CONTROL EFFORT) ---
     u_with_initial = np.concatenate(([0.0], u_out))
-    norm_effort = np.sum(np.abs(np.diff(u_with_initial)))
+    norm_effort = np.sum(np.abs(np.diff(u_with_initial))) / len(u_out)
 
     # Integral of Overshoot Area
     overshoot_array = np.where(error < 0, np.abs(error), 0.0)
