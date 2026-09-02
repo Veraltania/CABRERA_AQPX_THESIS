@@ -308,7 +308,7 @@ if __name__ == "__main__":
     STEP_SIZE = 20
 
     shared_config = {
-        "patience_limit": 25,
+        "patience_limit": 15,
         "max_iters": 100,
         "tol": 0.01,
         "improvement_tol": 0.01,
